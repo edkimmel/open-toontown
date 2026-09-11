@@ -419,8 +419,12 @@ class Golf(MagicWord):
     def handleWord(self, invoker, avId, toon, *args):
         from toontown.golf import GolfGlobals
 
-        history = list(self.history)[:GolfGlobals.NumHistory]
-        history += [0] * (GolfGlobals.NumHistory - len(history))
+        # setGolfHistory is a fixed-length uint16[18] dc field (etc/toon.dc),
+        # longer than GolfGlobals.NumHistory, so overlay the toon's current
+        # (already correctly sized) history instead of building a new list.
+        history = list(toon.getGolfHistory())
+        for i, value in enumerate(self.history[:GolfGlobals.NumHistory]):
+            history[i] = value
         toon.b_setGolfHistory(history)
         return f"Gave {toon.getName()} a golf history ({sum(toon.getGolfTrophies())} trophies)."
 
