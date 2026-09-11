@@ -341,6 +341,54 @@ class ToontownAIRepository(ToontownInternalRepository):
         for suitPlanner in list(self.suitPlanners.values()):
             suitPlanner.assignInitialSuitBuildings()
 
+        # DEV-ONLY TEST HOOK (Milestone 8, "elevators and suit buildings"
+        # client slice, godot/tests/integration/elevator_headless.gd).
+        #
+        # assignInitialSuitBuildings() above only enqueues *pending*
+        # track/height assignments (DistributedSuitPlannerAI.
+        # assignSuitBuildings() appends to sp.pendingBuildingTracks/
+        # pendingBuildingHeights) -- it does NOT itself flip any building
+        # to a suit state. A pending assignment only becomes a real
+        # DistributedBuildingAI.suitTakeOver() call once a walking
+        # DistributedSuit actually completes a takeover approach at that
+        # building (DistributedSuitAI's attemptingTakeover flow), which
+        # can take real minutes of simulated time -- far too slow for a
+        # fast, deterministic client integration test to wait on.
+        #
+        # Gated behind `want-dev-force-suit-building` (default false, so
+        # normal/production behavior -- and every other milestone's
+        # existing tests -- are completely unaffected). When enabled, it
+        # directly calls the same DistributedBuildingAI.suitTakeOver() a
+        # real takeover would eventually call, on block 4 of ONE Toontown
+        # Central street. Which street is `dev-force-suit-building-zone`
+        # (default 2200, Loopy Lane): block 4 is a regular landmark
+        # building on 2100 AND on 2200 (confirmed via
+        # tools/asset_pipeline/export_hood.py's
+        # `_process_landmark_buildings()` output and this file's own
+        # startup log to have both a front and side door, i.e. not one of
+        # the "No front/side door" warning blocks -- on 2200 only block 39
+        # warns). The default deliberately is NOT Silly Street 2100: a
+        # forced takeover there pulled walking cogs off the street that
+        # godot/tests/integration/battle_headless.gd hunts on, so one
+        # running stack could not serve both the elevator and the battle
+        # tests (docs/DEV_STACK_PARALLEL_TESTING.md section 4). This
+        # reproduces exactly what production code does at the end of a
+        # real walking-suit takeover -- it does not bypass or fake any
+        # client-visible behavior, it only skips the minutes-long walk
+        # animation that precedes it.
+        #
+        # Enabled by tools/prc/dev/dev_stack.prc, which
+        # tools/start_dev_stack.ps1 loads through PANDA_PRC_PATH for the
+        # AI process. See docs/ELEVATORS_AND_SUIT_BUILDINGS.md section 5.
+        if config.GetBool('want-dev-force-suit-building', False):
+            devZone = config.GetInt('dev-force-suit-building-zone', ToontownGlobals.LoopyLane)
+            devSuitPlanner = self.suitPlanners.get(devZone)
+            if devSuitPlanner is not None and devSuitPlanner.buildingMgr is not None:
+                devSuitPlanner.suitTakeOver(4, 'c', 1, 2)
+                self.notify.info('want-dev-force-suit-building: forced suitTakeOver(block=4, track=c, difficulty=1, height=2) on zone %d for elevator_headless.gd' % devZone)
+            else:
+                self.notify.warning('want-dev-force-suit-building: no suitPlanner/buildingMgr for zone %d, could not force a suit building' % devZone)
+
     def genDNAFileName(self, zoneId):
         canonicalZoneId = ZoneUtil.getCanonicalZoneId(zoneId)
         canonicalHoodId = ZoneUtil.getCanonicalHoodId(canonicalZoneId)
