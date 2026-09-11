@@ -314,8 +314,176 @@ class SetPinkSlips(MagicWord):
 
     def handleWord(self, invoker, avId, toon, *args):
         toon.b_setPinkSlips(args[0])
-        return f"Gave {toon.getName()} {args[0]} pink slips!" 
-    
+        return f"Gave {toon.getName()} {args[0]} pink slips!"
+
+class Disguise(MagicWord):
+    aliases = ["cogsuit"]
+    desc = "Gives the target a complete cog disguise for one department and unlocks the disguise page."
+    execLocation = MagicWordConfig.EXEC_LOC_SERVER
+    accessLevel = 'ADMIN'
+    arguments = [("dept", str, False, 'sell'), ("level", int, False, 1)]
+
+    # SuitDNA.suitDepts order: c, l, m, s
+    deptNames = {'c': ('c', 'boss', 'bossbot'),
+                 'l': ('l', 'law', 'lawbot'),
+                 'm': ('m', 'cash', 'cashbot'),
+                 's': ('s', 'sell', 'sellbot')}
+
+    def handleWord(self, invoker, avId, toon, *args):
+        from toontown.suit import SuitDNA
+        from toontown.coghq import CogDisguiseGlobals
+
+        deptName = args[0].lower()
+        level = args[1]
+        dept = None
+        for deptChar, names in self.deptNames.items():
+            if deptName in names:
+                dept = deptChar
+                break
+        if dept is None:
+            return f"Unknown department \"{args[0]}\". Valid departments: boss, law, cash, sell."
+        if not 1 <= level <= 5:
+            return "Specify a suit level between 1 and 5."
+
+        deptIndex = SuitDNA.suitDepts.index(dept)
+        parts = list(toon.getCogParts())
+        parts[deptIndex] = CogDisguiseGlobals.PartsPerSuitBitmasks[deptIndex]
+        toon.b_setCogParts(parts)
+        types = list(toon.getCogTypes())
+        types[deptIndex] = 0
+        toon.b_setCogTypes(types)
+        # cogLevels holds the absolute level; the first cog type of every department is level 0 (type level 1).
+        levels = list(toon.getCogLevels())
+        levels[deptIndex] = level - 1
+        toon.b_setCogLevels(levels)
+        merits = list(toon.getCogMerits())
+        merits[deptIndex] = CogDisguiseGlobals.getTotalMerits(toon, deptIndex) // 2
+        toon.b_setCogMerits(merits)
+        toon.b_setDisguisePageFlag(1)
+        return f"Gave {toon.getName()} a level {level} {SuitDNA.suitDeptFullnames[dept]} disguise."
+
+class Sos(MagicWord):
+    aliases = ["soscards"]
+    desc = "Gives the target a few SOS cards and unlocks the SOS page."
+    execLocation = MagicWordConfig.EXEC_LOC_SERVER
+    accessLevel = 'ADMIN'
+    arguments = [("count", int, False, 2)]
+
+    # One NPC per track from NPCToons.HQnpcFriends: toon-up, trap, lure, sound, drop.
+    npcIds = (2001, 2011, 3112, 4119, 1116)
+
+    def handleWord(self, invoker, avId, toon, *args):
+        from toontown.toon import NPCToons
+
+        count = args[0]
+        if not 1 <= count <= 255:
+            return "Specify a card count between 1 and 255."
+
+        friends = [(npcId, count) for npcId in self.npcIds if npcId in NPCToons.npcFriends]
+        toon.b_setNPCFriendsDict(friends)
+        toon.b_setSosPageFlag(1)
+        return f"Gave {toon.getName()} {len(friends)} SOS cards x{count}."
+
+class Kart(MagicWord):
+    aliases = ["givekart"]
+    desc = "Gives the target a kart (so the kart page appears) and some tickets."
+    execLocation = MagicWordConfig.EXEC_LOC_SERVER
+    accessLevel = 'ADMIN'
+    arguments = [("bodyType", int, False, 0), ("tickets", int, False, 500)]
+
+    def handleWord(self, invoker, avId, toon, *args):
+        from toontown.racing import KartDNA
+
+        bodyType = args[0]
+        tickets = args[1]
+        if not simbase.wantKarts:
+            return "Karts are disabled on this AI (wantKarts)."
+        if bodyType not in KartDNA.KartDict:
+            return f"Unknown kart body type {bodyType}. Valid types: {list(KartDNA.KartDict.keys())}"
+        if tickets < 0:
+            return "Specify a non-negative ticket count."
+
+        toon.b_setKartBodyType(bodyType)
+        toon.b_setTickets(tickets)
+        return f"Gave {toon.getName()} kart {bodyType} and {toon.getTickets()} tickets."
+
+class Golf(MagicWord):
+    aliases = ["golfhistory"]
+    desc = "Gives the target a golf history (so the golf page appears)."
+    execLocation = MagicWordConfig.EXEC_LOC_SERVER
+    accessLevel = 'ADMIN'
+
+    # Indexed by GolfGlobals.CoursesCompleted .. CourseTwoWins (NumHistory entries).
+    history = [5, 2, 1, 2, 3, 6, 6, 1, 1, 1]
+
+    def handleWord(self, invoker, avId, toon, *args):
+        from toontown.golf import GolfGlobals
+
+        history = list(self.history)[:GolfGlobals.NumHistory]
+        history += [0] * (GolfGlobals.NumHistory - len(history))
+        toon.b_setGolfHistory(history)
+        return f"Gave {toon.getName()} a golf history ({sum(toon.getGolfTrophies())} trophies)."
+
+class Garden(MagicWord):
+    aliases = ["gardenstarted"]
+    desc = "Marks the target's garden as started (so the garden page appears), with shovel skill and a few flowers."
+    execLocation = MagicWordConfig.EXEC_LOC_SERVER
+    accessLevel = 'ADMIN'
+    arguments = [("shovelSkill", int, False, 40)]
+
+    # (species, variety) pairs from GardenGlobals.PlantAttributes.
+    flowers = ((49, 10), (49, 11), (50, 20))
+
+    def handleWord(self, invoker, avId, toon, *args):
+        from toontown.estate import GardenGlobals
+
+        shovelSkill = args[0]
+        if not 0 <= shovelSkill < GardenGlobals.ShovelAttributes[toon.getShovel()]['skillPts']:
+            return "Specify a shovel skill below the next shovel's skill points ({}).".format(
+                GardenGlobals.ShovelAttributes[toon.getShovel()]['skillPts'])
+
+        for species, variety in self.flowers:
+            varieties = [v[0] for v in GardenGlobals.PlantAttributes[species]['varieties']]
+            if variety not in varieties:
+                return f"Bad flower variety {variety} for species {species}."
+
+        toon.b_setGardenStarted(1)
+        toon.b_setShovelSkill(shovelSkill)
+        toon.b_setFlowerCollection([f[0] for f in self.flowers], [f[1] for f in self.flowers])
+        return f"Started {toon.getName()}'s garden with {len(self.flowers)} flowers and shovel skill {shovelSkill}."
+
+class Fish(MagicWord):
+    aliases = ["givefish"]
+    desc = "Puts a few fish in the target's bucket and records a fish collection (with the first trophy)."
+    execLocation = MagicWordConfig.EXEC_LOC_SERVER
+    accessLevel = 'ADMIN'
+    arguments = [("tank", int, False, 4), ("collection", int, False, 10)]
+
+    def handleWord(self, invoker, avId, toon, *args):
+        from toontown.fishing import FishGlobals
+
+        numTank = args[0]
+        numCollection = args[1]
+        if not 0 <= numTank <= toon.getMaxFishTank():
+            return f"Specify a bucket count between 0 and {toon.getMaxFishTank()}."
+        if not 1 <= numCollection <= FishGlobals.getTotalNumFish():
+            return f"Specify a collection size between 1 and {FishGlobals.getTotalNumFish()}."
+
+        # Walk the fish table in order so the same word always gives the same fish;
+        # weights (ounces) sit mid-way through each species' range.
+        fish = []
+        for genus in FishGlobals.getGenera():
+            for species in range(len(FishGlobals.getSpecies(genus))):
+                minWeight, maxWeight = FishGlobals.getWeightRange(genus, species)
+                fish.append((genus, species, int(round((minWeight + maxWeight) / 2.0 * 16))))
+        collection = fish[:numCollection]
+        tank = fish[:numTank]
+        toon.b_setFishCollection([f[0] for f in collection], [f[1] for f in collection], [f[2] for f in collection])
+        toon.b_setFishTank([f[0] for f in tank], [f[1] for f in tank], [f[2] for f in tank])
+        trophies = list(range(len(collection) // FishGlobals.FISH_PER_BONUS))
+        toon.b_setFishingTrophies(trophies)
+        return f"Gave {toon.getName()} {len(tank)} fish in the bucket, {len(collection)} in the collection, {len(trophies)} trophies."
+
 class AbortMinigame(MagicWord):
     aliases = ["exitgame", "exitminigame", "quitgame", "quitminigame", "skipgame", "skipminigame"]
     desc = "Aborts an ongoing minigame."
