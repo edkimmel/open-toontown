@@ -1009,6 +1009,40 @@ class Fireworks(MagicWord):
             show.requestDelete()
             del self.fireworkShows[zoneId]
 
+class SetSpeedChatStyle(MagicWord):
+    # toontown/shtiker/OptionsPage.py:13-52 speedChatStyles is a 10-entry
+    # ((nameKey, arrowColor, rolloverColor, frameColor), ...) tuple, index
+    # 0-9; toontown/toon/DistributedToon.py:1290-1321's
+    # b_setSpeedChatStyleIndex/setSpeedChatStyleIndex is the only other
+    # place that bounds-checks against it (`0 <= index < len(speedChatStyles)`)
+    # -- this Magic Word mirrors that same bound rather than hardcoding 10,
+    # so it stays correct if the reference table ever grows. Added for the
+    # Godot port's parity work (docs/UI_AND_CHAT.md speed_chat_panel.gd
+    # SpeedChat-style-colour round): no existing Magic Word could set this
+    # DB field, so there was no way to capture a reference screenshot of a
+    # non-default SpeedChat colour scheme to verify the port against.
+    aliases = ["scstyle", "speedchatstyle"]
+    desc = "Sets the target's SpeedChat colour style (Options page swatch index)."
+    advancedDesc = "This Magic Word sets the target's speedChatStyleIndex DB field, the same one the Shticker " \
+                   "Book's Options page 'SpeedChat Style' arrows cycle through " \
+                   "(toontown/shtiker/OptionsPage.py's speedChatStyles table, index 0-9: Purple, Blue, Cyan, " \
+                   "Teal, Green, Yellow, Orange, Red, Pink, Brown). Changes the SpeedChat menu's own frame/arrow " \
+                   "colour AND the target's SpeedChat/quicktalk nametag balloon colour immediately."
+    execLocation = MagicWordConfig.EXEC_LOC_SERVER
+    arguments = [("index", int, True)]
+
+    def handleWord(self, invoker, avId, toon, *args):
+        index = args[0]
+        from toontown.shtiker.OptionsPage import speedChatStyles
+
+        if not 0 <= index < len(speedChatStyles):
+            return "Can't set {}'s SpeedChat style to {}! Specify a value between 0 and {}.".format(
+                toon.getName(), index, len(speedChatStyles) - 1)
+
+        toon.b_setSpeedChatStyleIndex(index)
+        return "{}'s SpeedChat style has been set to {} ({}).".format(
+            toon.getName(), index, speedChatStyles[index][0])
+
 
 # Instantiate all classes defined here to register them.
 # A bit hacky, but better than the old system
