@@ -625,14 +625,19 @@ class Quests(MagicWord):
     aliases = ["quest", "tasks", "task", "toontasks"]
     desc = "Quest manupliation"
     execLocation = MagicWordConfig.EXEC_LOC_SERVER
-    arguments = [("command", str, True), ("index", int, False, -1)]
+    arguments = [("command", str, True), ("index", int, False, -1), ("progress", int, False, -1)]
 
     def handleWord(self, invoker, avId, toon, *args):
         command = args[0]
         index = args[1]
+        progress = args[2]
         """
         Commands:
         - "finish": Finish a task (sets the progress to 1000), finishes all by default
+        - "add" <questId> [progress]: dev/testing only (ot-dev, not upstream) --
+          grants ToonTask <questId> directly (no NPC offer needed), optionally
+          overwriting its progress. Used by the Panda capture harness to seed
+          book:quests with filled QuestPosters (docs/PANDA_CAPTURE.md).
         """
         if command == "finish":
             if index == -1:
@@ -642,8 +647,15 @@ class Quests(MagicWord):
                 if self.air.questManager.completeQuestMagically(toon, index):
                     return f"Finished quest {index}."
                 return f"Quest {index} not found.  (Hint: Quest indexes start at 0)"
+        elif command == "add":
+            questId = index
+            questProgress = None if progress < 0 else progress
+            result = self.air.questManager.addQuestMagically(toon, questId, questProgress)
+            if result is None:
+                return f"Unknown questId {questId}."
+            return f"Gave {toon.getName()} quest {questId}" + (f" (progress {questProgress})." if questProgress else ".")
         else:
-            return "Valid commands: \"finish\""
+            return "Valid commands: \"finish\", \"add\""
 
 class Factory(MagicWord):
     desc = "Quickly start a Sellbot Factory."

@@ -897,6 +897,37 @@ class QuestManagerAI:
         else:
             return 0
 
+    def addQuestMagically(self, av, questId, progress=None):
+        # Dev-only helper (ot-dev, not upstream): grants a ToonTask by id
+        # without a live NPC offer, for the ~quest add magic word (Panda
+        # capture harness, docs/PANDA_CAPTURE.md). Resolves the QuestDict's
+        # placeholder npc/reward fields (Any/Same/NA) to concrete ids the
+        # same way a real NPC offer would, then reuses assignQuest() so
+        # quest history/reward-history bookkeeping matches a normal grant;
+        # progress (if given) overwrites the freshly-appended tuple's slot 4.
+        entry = Quests.QuestDict.get(questId)
+        if entry is None:
+            return None
+        fromNpcId = entry[Quests.QuestDictFromNpcIndex]
+        toNpcId = entry[Quests.QuestDictToNpcIndex]
+        rewardId = entry[Quests.QuestDictRewardIndex]
+        if fromNpcId in (Quests.Any, Quests.Same):
+            fromNpcId = Quests.ToonHQ
+        if toNpcId in (Quests.Any, Quests.Same):
+            toNpcId = Quests.ToonHQ
+        if rewardId in (Quests.Any, Quests.NA):
+            rewardId = 100  # MaxHpReward: harmless concrete default when the dict entry leaves it open
+        self.assignQuest(av.getDoId(), fromNpcId, questId, rewardId, toNpcId, startingQuest=1)
+        if progress:
+            quests = list(av.quests)
+            for i in range(len(quests) - 1, -1, -1):
+                if quests[i][0] == questId:
+                    q = quests[i]
+                    quests[i] = (q[0], q[1], q[2], q[3], progress)
+                    break
+            av.b_setQuests(quests)
+        return questId
+
     def toonMadeFriend(self, av, otherAv):
         # This is notifying us that a toon has made a friend.
         # See if this toon has a friend quest.
