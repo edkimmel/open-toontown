@@ -1010,17 +1010,34 @@ class Fireworks(MagicWord):
             del self.fireworkShows[zoneId]
 
 class SetSpeedChatStyle(MagicWord):
-    # toontown/shtiker/OptionsPage.py:13-52 speedChatStyles is a 10-entry
-    # ((nameKey, arrowColor, rolloverColor, frameColor), ...) tuple, index
-    # 0-9; toontown/toon/DistributedToon.py:1290-1321's
-    # b_setSpeedChatStyleIndex/setSpeedChatStyleIndex is the only other
-    # place that bounds-checks against it (`0 <= index < len(speedChatStyles)`)
-    # -- this Magic Word mirrors that same bound rather than hardcoding 10,
-    # so it stays correct if the reference table ever grows. Added for the
-    # Godot port's parity work (docs/UI_AND_CHAT.md speed_chat_panel.gd
-    # SpeedChat-style-colour round): no existing Magic Word could set this
-    # DB field, so there was no way to capture a reference screenshot of a
-    # non-default SpeedChat colour scheme to verify the port against.
+    # BUG FIX (dev-stack crash, coordinator report): the first version of
+    # this word did `from toontown.shtiker.OptionsPage import
+    # speedChatStyles` to bounds-check/name the index -- OptionsPage.py is
+    # a CLIENT Shticker Book page module; its class bodies default-
+    # construct against `aspect2d` (`OptionsPage.py:124,469`
+    # `def __init__(self, parent = aspect2d)`), a ShowBase builtin that
+    # only exists in the client process's global namespace. Evaluating
+    # that default at import time on the AI (no ShowBase, no `aspect2d`/
+    # `render` builtins) raised `NameError: name 'render' is not
+    # defined` inside DirectGui's own import chain and took the AI
+    # process down. `toontown/toon/DistributedToonAI.py:2382-2391`'s
+    # `b_setSpeedChatStyleIndex`/`setSpeedChatStyleIndex` -- the ACTUAL
+    # AI-side pair this word calls -- do not import that module either,
+    # for the same reason: no client-only import, ever, in AI-side code.
+    # This version instead transcribes just the two AI-safe facts that
+    # module's `speedChatStyles` tuple provides (`OptionsPage.py:13-52`):
+    # its length (10, `_NUM_STYLES` below) and each entry's human name
+    # (`OTPLocalizerEnglish.py:1165-1174`'s `SpeedChatStaticText`
+    # 2000-2009, the `nameKey` field of each tuple) -- literal data, not
+    # a live import, the same "copy the numbers, don't import the GUI
+    # module" choice `godot/game/speed_chat_styles.gd`'s own
+    # `SpeedChatStyles.STYLES` already made on the Godot side.
+    #
+    # Added for the Godot port's parity work (docs/UI_AND_CHAT.md
+    # speed_chat_panel.gd SpeedChat-style-colour round): no existing
+    # Magic Word could set this DB field, so there was no way to capture
+    # a reference screenshot of a non-default SpeedChat colour scheme to
+    # verify the port against.
     aliases = ["scstyle", "speedchatstyle"]
     desc = "Sets the target's SpeedChat colour style (Options page swatch index)."
     advancedDesc = "This Magic Word sets the target's speedChatStyleIndex DB field, the same one the Shticker " \
@@ -1031,17 +1048,22 @@ class SetSpeedChatStyle(MagicWord):
     execLocation = MagicWordConfig.EXEC_LOC_SERVER
     arguments = [("index", int, True)]
 
+    # OptionsPage.py:13-52's speedChatStyles, AI-safe subset only (length
+    # + name, no colour tuples/no import -- see the class doc above for
+    # why this is transcribed rather than imported).
+    _STYLE_NAMES = ["Purple", "Blue", "Cyan", "Teal", "Green", "Yellow", "Orange", "Red", "Pink", "Brown"]
+    _NUM_STYLES = len(_STYLE_NAMES)
+
     def handleWord(self, invoker, avId, toon, *args):
         index = args[0]
-        from toontown.shtiker.OptionsPage import speedChatStyles
 
-        if not 0 <= index < len(speedChatStyles):
+        if not 0 <= index < self._NUM_STYLES:
             return "Can't set {}'s SpeedChat style to {}! Specify a value between 0 and {}.".format(
-                toon.getName(), index, len(speedChatStyles) - 1)
+                toon.getName(), index, self._NUM_STYLES - 1)
 
         toon.b_setSpeedChatStyleIndex(index)
         return "{}'s SpeedChat style has been set to {} ({}).".format(
-            toon.getName(), index, speedChatStyles[index][0])
+            toon.getName(), index, self._STYLE_NAMES[index])
 
 
 # Instantiate all classes defined here to register them.
