@@ -5,6 +5,27 @@ from toontown.estate.DistributedHouseAI import DistributedHouseAI
 from toontown.estate.EstateProvisioner import NUM_HOUSE_SLOTS
 
 
+def dropStaleObject(air, doId):
+    """Forget a persistent object an earlier visit left behind.
+
+    requestDelete only asks the State Server to delete the object
+    (direct/distributed/AstronInternalRepository.py:572-584); the AI keeps its
+    own reference until that delete comes back to handleObjExit (:301-313), and
+    a visit that ended uncleanly may leave it there for good.  Generating the
+    persistent doId again on top of it raises 'already in doId2do', so the
+    stale object goes first -- the same thing DistributedBattleBaseAI does
+    before it regenerates a pet proxy on its persistent doId
+    (toontown/battle/DistributedBattleBaseAI.py:1120-1127).
+    """
+    do = air.doId2do.get(doId)
+    if do is None:
+        return
+
+    do.requestDelete()
+    air.removeDOFromTables(do)
+    do.delete()
+
+
 class EstateWorld:
     """One account's estate while it is live: the zone it was generated in,
     the objects generated there, and the avatars standing in it.  The estate
@@ -100,12 +121,14 @@ class EstateWorldOperation:
     def __generate(self):
         world = self.world
         world.zoneId = self.air.allocateZone(owner=world.ownerId)
+        dropStaleObject(self.air, world.estateId)
         estate = DistributedEstateAI(self.air)
         estate.loadFromDb(self.estateFields)
         estate.dbObject = 1
         estate.generateWithRequiredAndId(world.estateId, self.air.districtId, world.zoneId)
         world.estate = estate
         for slot in sorted(self.houseFields):
+            dropStaleObject(self.air, world.houseIds[slot])
             house = DistributedHouseAI(self.air)
             house.loadFromDb(self.houseFields[slot])
             house.setHousePos(slot)
