@@ -7,9 +7,6 @@ from toontown.estate.EstateWorld import EstateWorld, EstateWorldOperation
 class EstateManagerAI(DistributedObjectAI):
     notify = DirectNotifyGlobal.directNotify.newCategory('EstateManagerAI')
 
-    # how long to wait for a closed estate's delete before reopening anyway
-    ESTATE_CLOSE_TIMEOUT = 10.0
-
     def __init__(self, air):
         DistributedObjectAI.__init__(self, air)
         self.estate = {}
@@ -20,8 +17,6 @@ class EstateManagerAI(DistributedObjectAI):
         self.worlds = {}
         self.pendingWorlds = {}
         self.zoneId2world = {}
-        # accountId -> the estate doId whose delete we are still waiting for
-        self.closingWorlds = {}
 
     def getOwnerFromZone(self, zoneId):
         return self.zoneId2owner.get(zoneId)
@@ -77,11 +72,6 @@ class EstateManagerAI(DistributedObjectAI):
 
         self.pendingWorlds[accountId] = [senderId]
         self.__watchAvatar(senderId)
-        if accountId in self.closingWorlds:
-            # The previous visit is still being torn down; __worldClosed opens
-            # the new one once the old objects are really gone.
-            return
-
         self.__openWorld(accountId)
 
     def __openWorld(self, accountId):
@@ -170,42 +160,18 @@ class EstateManagerAI(DistributedObjectAI):
         self.__closeWorld(world)
 
     def __closeWorld(self, world):
+        # An empty estate keeps its zone and its objects instead of being torn
+        # down.  The estate and house doIds are persistent and are generated
+        # with generateWithRequiredAndId, and a doId that has already been
+        # deleted once cannot be generated again: the State Server never sends
+        # the object to a client a second time, and the delete never comes back
+        # to the AI either (handleObjExit, direct/distributed/
+        # AstronInternalRepository.py:301-313), so the object also stays in
+        # air.doId2do for good.  The next visit re-admits the owner to the same
+        # live world, which is what the client expects anyway -- the estate is
+        # the one place a toon owns.
         for avId in list(world.occupants):
             self.__ignoreAvatar(avId)
             self.estate.pop(avId, None)
             self.owner2estateZone.pop(avId, None)
             world.removeOccupant(avId)
-
-        self.worlds.pop(world.accountId, None)
-        self.zoneId2world.pop(world.zoneId, None)
-        self.zoneId2owner.pop(world.zoneId, None)
-        world.destroy(self.air)
-        # The estate doId is persistent, and requestDelete does not take the
-        # object out of air.doId2do -- only the State Server's delete coming
-        # back does (direct/distributed/AstronInternalRepository.py:301-313,
-        # 572-584).  Keep the account closed until then so a reopen cannot
-        # generate the same doId twice.
-        accountId = world.accountId
-        self.closingWorlds[accountId] = world.estateId
-        self.acceptOnce('distObjDelete-%s' % world.estateId, self.__worldClosed,
-                        extraArgs=[accountId])
-        taskMgr.doMethodLater(self.ESTATE_CLOSE_TIMEOUT, self.__closeTimedOut,
-                              self.__closeTaskName(accountId), extraArgs=[accountId])
-
-    def __closeTaskName(self, accountId):
-        return 'estate-close-%s' % accountId
-
-    def __closeTimedOut(self, accountId):
-        self.notify.warning('Estate %s never came back deleted; reopening anyway.'
-                            % self.closingWorlds.get(accountId))
-        self.__worldClosed(accountId)
-
-    def __worldClosed(self, accountId):
-        estateId = self.closingWorlds.pop(accountId, None)
-        if estateId is None:
-            return
-
-        self.ignore('distObjDelete-%s' % estateId)
-        taskMgr.remove(self.__closeTaskName(accountId))
-        if self.pendingWorlds.get(accountId):
-            self.__openWorld(accountId)
