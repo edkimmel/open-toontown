@@ -147,6 +147,7 @@ class EstateWorldOperation:
             house = self.air.doId2do[world.houseIds[slot]]
             house.setHousePos(slot)
             house.createInterior()
+            house.createMailbox()
             house.d_setHouseReady()
             world.houses.append(house)
 

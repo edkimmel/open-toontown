@@ -2,8 +2,12 @@ from direct.directnotify import DirectNotifyGlobal
 from direct.distributed.DistributedObjectAI import DistributedObjectAI
 
 from toontown.building import DoorTypes
+from toontown.catalog import CatalogItem
+from toontown.catalog import CatalogItemList
+from toontown.estate.DistributedFurnitureManagerAI import DistributedFurnitureManagerAI
 from toontown.estate.DistributedHouseDoorAI import DistributedHouseDoorAI
 from toontown.estate.DistributedHouseInteriorAI import DistributedHouseInteriorAI
+from toontown.estate.DistributedMailboxAI import DistributedMailboxAI
 from toontown.estate.EstateProvisioner import fieldValue
 
 
@@ -28,6 +32,8 @@ class DistributedHouseAI(DistributedObjectAI):
         self.cannonEnabled = 0
         self.interiorZoneId = None
         self.interior = None
+        self.furnitureMgr = None
+        self.mailbox = None
         self.door = None
         self.insideDoor = None
 
@@ -130,6 +136,22 @@ class DistributedHouseAI(DistributedObjectAI):
     def getCannonEnabled(self):
         return self.cannonEnabled
 
+    def getInteriorItemList(self):
+        """The items standing in the room keep their placement, unlike the
+        ones in the attic (toontown/estate/DistributedFurnitureManager.py:50)."""
+        return CatalogItemList.CatalogItemList(
+            self.interiorItems, store=CatalogItem.Customization | CatalogItem.Location)
+
+    def getNumHouseItems(self):
+        """The count the catalog compares against MaxHouseItems, computed the
+        way toontown/catalog/CatalogAtticItem.py:24-26 computes it."""
+        count = 0
+        for blob in (self.atticItems, self.atticWallpaper, self.atticWindows):
+            count += len(CatalogItemList.CatalogItemList(
+                blob, store=CatalogItem.Customization))
+
+        return count + len(self.getInteriorItemList())
+
     def d_setHouseReady(self):
         self.sendUpdate('setHouseReady', [])
 
@@ -154,12 +176,23 @@ class DistributedHouseAI(DistributedObjectAI):
         insideDoor.generateWithRequired(self.interiorZoneId)
         self.door = door
         self.insideDoor = insideDoor
+        self.furnitureMgr = DistributedFurnitureManagerAI(self.air, self, self.interior)
+        self.furnitureMgr.generateWithRequired(self.interiorZoneId)
+        self.furnitureMgr.createFurniture(self.interiorZoneId)
+
+    def createMailbox(self):
+        self.mailbox = DistributedMailboxAI(self.air, self)
+        self.mailbox.generateWithRequired(self.zoneId)
 
     def destroy(self):
-        for distObj in (self.insideDoor, self.door, self.interior):
+        if self.furnitureMgr is not None:
+            self.furnitureMgr.destroy()
+            self.furnitureMgr = None
+        for distObj in (self.mailbox, self.insideDoor, self.door, self.interior):
             if distObj is not None:
                 distObj.requestDelete()
 
+        self.mailbox = None
         self.insideDoor = None
         self.door = None
         self.interior = None
