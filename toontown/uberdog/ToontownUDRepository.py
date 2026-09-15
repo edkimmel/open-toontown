@@ -17,6 +17,8 @@ class ToontownUDRepository(ToontownInternalRepository):
         ToontownInternalRepository.__init__(self, baseChannel, serverId, dcSuffix='UD')
         self.toontownTimeManager = None
         self.astronLoginManager = None
+        self.avatarFriendsManager = None
+        self.playerFriendsManager = None
 
     def handleConnected(self):
         ToontownInternalRepository.handleConnected(self)
@@ -45,3 +47,12 @@ class ToontownUDRepository(ToontownInternalRepository):
         if __astron__:
             # Create our Astron login manager...
             self.astronLoginManager = self.generateGlobalObject(OTP_DO_ID_ASTRON_LOGIN_MANAGER, 'AstronLoginManager')
+
+            # Create our friends managers.  astrond already reserves both ids
+            # as uberdogs (astron/config/astrond.yml:18-24); generateGlobalObject
+            # resolves dcname + dcSuffix to AvatarFriendsManagerUD /
+            # TTPlayerFriendsManagerUD.
+            self.avatarFriendsManager = self.generateGlobalObject(
+                OTP_DO_ID_AVATAR_FRIENDS_MANAGER, 'AvatarFriendsManager')
+            self.playerFriendsManager = self.generateGlobalObject(
+                OTP_DO_ID_PLAYER_FRIENDS_MANAGER, 'TTPlayerFriendsManager')
