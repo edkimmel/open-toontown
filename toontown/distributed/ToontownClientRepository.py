@@ -861,7 +861,16 @@ class ToontownClientRepository(OTPClientRepository.OTPClientRepository):
 
     def sendGetFriendsListRequest(self):
         if __astron__:
-            print('sendGetFriendsListRequest TODO')
+            # The legacy CLIENT_GET_FRIEND_LIST datagram below is not a
+            # message the Astron client agent defines; the same payload
+            # comes back through FriendManager.getFriendsListResponse.
+            if self.friendManager is None:
+                self.notify.warning('No FriendManager; cannot fetch the friends list.')
+                self.friendsListError = 1
+                return
+            self.friendsMapPending = 1
+            self.friendsListError = 0
+            self.friendManager.up_getFriendsListRequest()
         else:
             self.friendsMapPending = 1
             self.friendsListError = 0
@@ -933,6 +942,34 @@ class ToontownClientRepository(OTPClientRepository.OTPClientRepository):
         self.friendsMapPending = 0
         messenger.send('friendsMapComplete')
 
+    def handleGetFriendsListResponse(self, error, friendDetails):
+        # FriendManager.getFriendsListResponse: the same work
+        # handleGetFriendsList does, off dc fields instead of a datagram.
+        if error:
+            self.notify.warning('Got error return from friends list.')
+            self.friendsListError = 1
+        else:
+            for doId, name, dnaString, petId in friendDetails:
+                dna = ToonDNA.ToonDNA()
+                dna.makeFromNetString(dnaString)
+                handle = FriendHandle.FriendHandle(doId, name, dna, petId)
+                self.friendsMap[doId] = handle
+                if doId in self.friendsOnline:
+                    self.friendsOnline[doId] = handle
+                if doId in self.friendPendingChatSettings:
+                    self.notify.debug('calling setCommonAndWL %s' % str(self.friendPendingChatSettings[doId]))
+                    handle.setCommonAndWhitelistChatFlags(*self.friendPendingChatSettings[doId])
+
+            if base.wantPets and base.localAvatar.hasPet():
+
+                def handleAddedPet():
+                    self.friendsMapPending = 0
+                    messenger.send('friendsMapComplete')
+
+                self.addPetToFriendsMap(handleAddedPet)
+                return
+        self.friendsMapPending = 0
+        messenger.send('friendsMapComplete')
     def handleGetFriendsListExtended(self, di):
         avatarHandleList = []
         error = di.getUint8()
