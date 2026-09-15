@@ -69,8 +69,8 @@ class EstateProvisionOperation:
     def __createEstate(self):
         fields = {'DcObjectType': 'DistributedEstate'}
         for slot in range(NUM_HOUSE_SLOTS):
-            fields['setSlot%dToonId' % slot] = self.avList[slot]
-            fields['setSlot%dItems' % slot] = []
+            fields['setSlot%dToonId' % slot] = [self.avList[slot]]
+            fields['setSlot%dItems' % slot] = [[]]
 
         self.air.dbInterface.createObject(self.air.dbId,
                                           self.air.dclassesByName['DistributedEstateAI'],
@@ -151,18 +151,18 @@ class EstateProvisionOperation:
 
     def __createHouse(self):
         fields = {'DcObjectType': 'DistributedHouse',
-                  'setAvatarId': self.avList[self.slot],
-                  'setName': '',
-                  'setHouseType': 0,
-                  'setGardenPos': self.slot,
-                  'setColor': self.slot,
-                  'setAtticItems': b'',
-                  'setInteriorItems': b'',
-                  'setAtticWallpaper': b'',
-                  'setInteriorWallpaper': b'',
-                  'setAtticWindows': b'',
-                  'setInteriorWindows': b'',
-                  'setDeletedItems': b''}
+                  'setAvatarId': (self.avList[self.slot],),
+                  'setName': ('',),
+                  'setHouseType': (0,),
+                  'setGardenPos': (self.slot,),
+                  'setColor': (self.slot,),
+                  'setAtticItems': (b'',),
+                  'setInteriorItems': (b'',),
+                  'setAtticWallpaper': (b'',),
+                  'setInteriorWallpaper': (b'',),
+                  'setAtticWindows': (b'',),
+                  'setInteriorWindows': (b'',),
+                  'setDeletedItems': (b'',)}
 
         self.air.dbInterface.createObject(self.air.dbId,
                                           self.air.dclassesByName['DistributedHouseAI'],
@@ -184,8 +184,8 @@ class EstateProvisionOperation:
 
         self.air.dbInterface.updateObject(self.air.dbId, avId,
                                           self.air.dclassesByName['DistributedToonAI'],
-                                          {'setHouseId': houseId},
-                                          {'setHouseId': 0},
+                                          {'setHouseId': (houseId,)},
+                                          {'setHouseId': (0,)},
                                           self.__handleHouseLinked)
 
     def __handleHouseLinked(self, fields):
