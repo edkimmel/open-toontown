@@ -17,17 +17,38 @@ class CatalogManagerAI(DistributedObjectAI):
         # The generator memoises its seasonal item lists per day, so there is
         # one generator for the whole district.
         self.catalogGenerator = CatalogGenerator.CatalogGenerator()
+        # Avatars whose client asked for a first catalog before the avatar
+        # itself had reached this AI.
+        self.pendingAvIds = set()
+        self.accept('avatarEntered', self.__handleAvatarEntered)
 
     def startCatalog(self):
         avId = self.air.getAvatarIdFromSender()
         avatar = self.air.doId2do.get(avId)
         if avatar is None:
-            self.notify.warning('startCatalog from unknown avatar %s.' % avId)
+            # The client asks as soon as it sees this manager
+            # (toontown/catalog/CatalogManager.py:15-17), which is while it is
+            # still in the uber zone -- before the avatar activates here.  Hold
+            # the request until the avatar announces itself
+            # (toontown/toon/DistributedToonAI.py:224).
+            self.pendingAvIds.add(avId)
+            self.acceptOnce(self.air.getAvatarExitEvent(avId),
+                            self.pendingAvIds.discard, extraArgs=[avId])
             return
+        self.__startCatalog(avatar)
+
+    def __startCatalog(self, avatar):
         if avatar.catalogScheduleNextTime != 0:
-            self.notify.warning('Avatar %s already has a catalog.' % avId)
+            self.notify.warning('Avatar %s already has a catalog.' % avatar.doId)
             return
         self.__issueCatalog(avatar, 0, 1)
+
+    def __handleAvatarEntered(self, avatar):
+        if avatar.doId not in self.pendingAvIds:
+            return
+        self.pendingAvIds.discard(avatar.doId)
+        self.ignore(self.air.getAvatarExitEvent(avatar.doId))
+        self.__startCatalog(avatar)
 
     def deliverCatalogFor(self, avatar):
         currentWeek, nextTime = avatar.getCatalogSchedule()
