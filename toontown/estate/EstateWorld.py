@@ -58,19 +58,6 @@ class EstateWorld:
         zones.extend(self.getHouseZones())
         return zones
 
-    def destroy(self, air):
-        for house in self.houses:
-            house.destroy()
-
-        self.houses = []
-        if self.estate is not None:
-            self.estate.requestDelete()
-            self.estate = None
-
-        if self.zoneId is not None:
-            air.deallocateZone(self.zoneId)
-            self.zoneId = None
-
 
 class EstateWorldOperation:
     """Reads the persisted estate and house records, then generates them into
