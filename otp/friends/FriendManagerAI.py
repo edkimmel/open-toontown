@@ -5,16 +5,11 @@ from otp.otpbase import OTPGlobals
 
 class FriendManagerAI(DistributedObjectAI):
     """Server half of `otp/friends/FriendManager.py` (dclass
-    `etc/otp.dc:308-322`), generated into the management zone by
-    `toontown/ai/ToontownAIRepository.createGlobals` exactly like
-    `TimeManagerAI`.
-
-    The client never calls `generateGlobalObject` for 4501 -- it latches
-    whatever `FriendManager` DO is generated *to* it
-    (`otp/friends/FriendManager.py:31-36`).  An AI-side object in
-    `OTP_ZONE_ID_MANAGEMENT`, which every client has an interest in
-    (`otp/distributed/OTPClientRepository.py:1452`), reaches clients with no
-    astrond.yml or .dc change.
+    `etc/otp.dc:308-322`), generated at the fixed doId 4501 by
+    `toontown/ai/ToontownAIRepository.createGlobals`, matching the client's
+    `cr.generateGlobalObject(OTP_DO_ID_FRIEND_MANAGER, 'FriendManager')`
+    (`toontown/toonbase/ToontownStart.py`). astrond.yml must reserve 4501 as
+    an uberdog or the client agent rejects any update sent to it.
 
     The two code tables this class must obey, both read off the client
     (`toontown/friends/FriendInviter.py:498-532`):
