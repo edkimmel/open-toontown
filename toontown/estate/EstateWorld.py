@@ -32,6 +32,11 @@ class EstateWorld:
         return [house.interiorZoneId for house in self.houses
                 if house.interiorZoneId is not None]
 
+    def getZones(self):
+        zones = [] if self.zoneId is None else [self.zoneId]
+        zones.extend(self.getHouseZones())
+        return zones
+
     def destroy(self, air):
         for house in self.houses:
             house.destroy()
