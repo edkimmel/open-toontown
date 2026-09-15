@@ -389,6 +389,38 @@ class SetPinkSlips(MagicWord):
         toon.b_setPinkSlips(args[0])
         return f"Gave {toon.getName()} {args[0]} pink slips!"
 
+class SetMoney(MagicWord):
+    aliases = ["money"]
+    desc = "Sets the amount of jellybeans in the target's pocket."
+    execLocation = MagicWordConfig.EXEC_LOC_SERVER
+    arguments = [("money", int, True)]
+
+    def handleWord(self, invoker, avId, toon, *args):
+        money = args[0]
+
+        if not 0 <= money <= toon.getMaxMoney():
+            return "Can't set {0}'s jellybeans to {1}! Specify a value between 0 and {0}'s pocket size ({2}).".format(
+                toon.getName(), money, toon.getMaxMoney())
+
+        toon.b_setMoney(money)
+        return "{}'s jellybeans have been set to {}.".format(toon.getName(), money)
+
+class SetBankMoney(MagicWord):
+    aliases = ["bank", "bankmoney"]
+    desc = "Sets the amount of jellybeans in the target's bank."
+    execLocation = MagicWordConfig.EXEC_LOC_SERVER
+    arguments = [("money", int, True)]
+
+    def handleWord(self, invoker, avId, toon, *args):
+        money = args[0]
+
+        if not 0 <= money <= toon.getMaxBankMoney():
+            return "Can't set {0}'s banked jellybeans to {1}! Specify a value between 0 and {0}'s bank size ({2}).".format(
+                toon.getName(), money, toon.getMaxBankMoney())
+
+        toon.b_setBankMoney(money)
+        return "{}'s banked jellybeans have been set to {}.".format(toon.getName(), money)
+
 class Disguise(MagicWord):
     aliases = ["cogsuit"]
     desc = "Gives the target a complete cog disguise for one department and unlocks the disguise page."
