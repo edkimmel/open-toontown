@@ -352,8 +352,9 @@ class GagExp(MagicWord):
 
 class GameAccess(MagicWord):
     # Session-only: setAccess is `required ram`, not `db`, so this does not
-    # persist across a reconnect.
-    aliases = ["gameaccess"]
+    # persist across a reconnect. The class name lowercases to the "gameaccess"
+    # alias; do not also list it in `aliases` (MagicWord.__init__ prepends the
+    # class name automatically and a duplicate alias crashes on import).
     desc = "Sets the target's game access level for this session only (not saved to the database)."
     execLocation = MagicWordConfig.EXEC_LOC_SERVER
     arguments = [("level", str, True)]
