@@ -10,6 +10,7 @@ from toontown.ai.NewsManagerAI import NewsManagerAI
 from toontown.ai.WelcomeValleyManagerAI import WelcomeValleyManagerAI
 from toontown.building.DistributedTrophyMgrAI import DistributedTrophyMgrAI
 from toontown.catalog.CatalogManagerAI import CatalogManagerAI
+from toontown.estate.EstateManagerAI import EstateManagerAI
 from toontown.coghq.CogSuitManagerAI import CogSuitManagerAI
 from toontown.coghq.CountryClubManagerAI import CountryClubManagerAI
 from toontown.coghq.FactoryManagerAI import FactoryManagerAI
@@ -217,6 +218,10 @@ class ToontownAIRepository(ToontownInternalRepository):
         # Generate our catalog manager...
         self.catalogManager = CatalogManagerAI(self)
         self.catalogManager.generateWithRequired(OTP_ZONE_ID_MANAGEMENT)
+
+        # Generate our estate manager...
+        self.estateMgr = EstateManagerAI(self)
+        self.estateMgr.generateWithRequired(OTP_ZONE_ID_MANAGEMENT)
 
         # Generate our trophy manager...
         self.trophyMgr = DistributedTrophyMgrAI(self)
