@@ -835,10 +835,17 @@ class ToontownClientRepository(OTPClientRepository.OTPClientRepository):
 
     def removeFriend(self, avatarId):
         base.localAvatar.sendUpdate('friendsNotify', [base.localAvatar.doId, 1], sendToId=avatarId)
-        datagram = PyDatagram()
-        datagram.addUint16(CLIENT_REMOVE_FRIEND)
-        datagram.addUint32(avatarId)
-        self.send(datagram)
+        if not __astron__:
+            # CLIENT_REMOVE_FRIEND is a legacy (pre-Astron) client message the
+            # Astron client agent does not define; emitting it kills the
+            # connection.  Guarded in exactly the style of
+            # sendGetFriendsListRequest below (:855-863).  Under Astron the
+            # removal is server-side work (AvatarFriendsManager.requestRemove,
+            # etc/otp.dc:455).
+            datagram = PyDatagram()
+            datagram.addUint16(CLIENT_REMOVE_FRIEND)
+            datagram.addUint32(avatarId)
+            self.send(datagram)
         self.estateMgr.removeFriend(base.localAvatar.doId, avatarId)
         for pair in base.localAvatar.friendsList:
             friendId = pair[0]
@@ -1200,6 +1207,14 @@ class ToontownClientRepository(OTPClientRepository.OTPClientRepository):
     def requestAvatarInfo(self, avId):
         if avId == 0:
             return
+        if __astron__:
+            # CLIENT_GET_FRIEND_LIST_EXTENDED is a legacy (pre-Astron) client
+            # message the Astron client agent does not define.  This path is
+            # reachable from PlayerFriendsManager.updatePlayerFriend (:110-111)
+            # for any avatar the client does not know, so leaving it unguarded
+            # disconnects a stock client the first time a UD sends that field.
+            # Same guard style as sendGetFriendsListRequest (:855-863).
+            return
         datagram = PyDatagram()
         datagram.addUint16(CLIENT_GET_FRIEND_LIST_EXTENDED)
         datagram.addUint16(1)
@@ -1221,6 +1236,11 @@ class ToontownClientRepository(OTPClientRepository.OTPClientRepository):
         if not hasattr(self, 'avatarInfoRequests'):
             return
         if len(self.avatarInfoRequests) == 0:
+            return
+        if __astron__:
+            # See requestAvatarInfo above: CLIENT_GET_FRIEND_LIST_EXTENDED is
+            # undefined for the Astron client agent.  Guarded like
+            # sendGetFriendsListRequest (:855-863).
             return
         datagram = PyDatagram()
         datagram.addUint16(CLIENT_GET_FRIEND_LIST_EXTENDED)
