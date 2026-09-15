@@ -192,7 +192,7 @@ class DistributedLawnDecor(DistributedNode.DistributedNode, NodePath, ShadowCast
                     self.stickParts()
                     return Task.done
 
-        taskMgr.doMethodLater(1.0, self.stick2Ground, uniqueName('groundsticker'))
+        taskMgr.doMethodLater(1.0, self.stick2Ground, PythonUtil.uniqueName('groundsticker'))
         return Task.done
 
     def stickParts(self):
