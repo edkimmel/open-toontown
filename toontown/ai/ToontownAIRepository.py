@@ -4,6 +4,7 @@ from panda3d.toontown import *
 
 from otp.ai.AIZoneData import AIZoneDataStore
 from otp.ai.TimeManagerAI import TimeManagerAI
+from otp.friends.FriendManagerAI import FriendManagerAI
 from otp.distributed.OtpDoGlobals import *
 from toontown.ai.HolidayManagerAI import HolidayManagerAI
 from toontown.ai.NewsManagerAI import NewsManagerAI
@@ -196,6 +197,11 @@ class ToontownAIRepository(ToontownInternalRepository):
         self.timeManager = TimeManagerAI(self)
         self.timeManager.generateWithRequired(OTP_ZONE_ID_MANAGEMENT)
 
+        # Generate our friend manager...  The client has no doId for this
+        # one: it latches whatever FriendManager DO is generated to it
+        # (otp/friends/FriendManager.py:31-36).
+        self.friendManager = FriendManagerAI(self)
+        self.friendManager.generateWithRequired(OTP_ZONE_ID_MANAGEMENT)
 
         # Generate our news manager...
         self.newsManager = NewsManagerAI(self)
