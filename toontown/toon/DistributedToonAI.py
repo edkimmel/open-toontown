@@ -219,6 +219,10 @@ class DistributedToonAI(DistributedPlayerAI.DistributedPlayerAI, DistributedSmoo
             messenger.send('avatarEntered', [self])
             if __astron__:
                 self.sendUpdate('setDefaultShard', [self.air.districtId])
+            # Hand out any catalog issues that came due while the avatar was
+            # logged out.  The client only asks for a catalog when it has
+            # never had one.
+            self.air.catalogManager.deliverCatalogFor(self)
         if hasattr(self, 'gameAccess') and self.gameAccess != 2:
             if self.hat[0] != 0:
                 self.replaceItemInAccessoriesList(ToonDNA.HAT, 0, 0, 0, self.hat[0], self.hat[1], self.hat[2])
