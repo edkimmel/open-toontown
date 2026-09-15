@@ -439,6 +439,67 @@ class Deliver(MagicWord):
         toon._DistributedToonAI__deliverBothPurchases(None)
         return "Delivered {} item(s) to {}.".format(count, toon.getName())
 
+class Furnish(MagicWord):
+    desc = "Debug use only: puts a gender-correct closet, a trunk and a bank into the target's house, plus a few plain items in the attic."
+    execLocation = MagicWordConfig.EXEC_LOC_SERVER
+    accessLevel = 'ADMIN'
+
+    def handleWord(self, invoker, avId, toon, *args):
+        from toontown.catalog import CatalogItem
+        from toontown.catalog.CatalogItemList import CatalogItemList
+        from toontown.catalog.CatalogFurnitureItem import CatalogFurnitureItem
+
+        houseId = toon.getHouseId()
+        if not houseId:
+            return "{} has no house.".format(toon.getName())
+
+        forBoys = toon.getStyle().getGender() == 'm'
+        closetType = 500 if forBoys else 510
+        trunkType = 4000 if forBoys else 4010
+        bankType = 1300
+
+        closet = CatalogFurnitureItem(closetType, posHpr=(4, 0, 0, 90, 0, 0))
+        trunk = CatalogFurnitureItem(trunkType, posHpr=(-4, 0, 0, -90, 0, 0))
+        bank = CatalogFurnitureItem(bankType, posHpr=(0, 4, 0, 0, 0, 0))
+        atticItems = [CatalogFurnitureItem(100) for i in range(3)]
+
+        house = self.air.doId2do.get(houseId)
+        if house is not None:
+            interior = house.getInteriorItemList()
+            for item in (closet, trunk, bank):
+                interior.append(item)
+            house.setInteriorItemList(interior)
+            for item in atticItems:
+                house.addAtticItem(item)
+        else:
+            # The house isn't generated on this AI (the target isn't inside
+            # their own estate right now), so there's no live object to call
+            # -- write the two blobs straight to its database row instead,
+            # the same field-write path AstronLoginManagerUD.py:253 uses for
+            # an object that isn't resident either. This replaces whatever
+            # was already in those two blobs rather than merging into it.
+            interior = CatalogItemList(store=CatalogItem.Customization | CatalogItem.Location)
+            for item in (closet, trunk, bank):
+                interior.append(item)
+            attic = CatalogItemList(store=CatalogItem.Customization)
+            for item in atticItems:
+                attic.append(item)
+
+            dclass = self.air.dclassesByName['DistributedHouseAI']
+            self.air.dbInterface.updateObject(
+                self.air.dbId, houseId, dclass,
+                {'setInteriorItems': (interior.getBlob(),),
+                 'setAtticItems': (attic.getBlob(),)})
+
+        # recordPurchase (CatalogFurnitureItem.py:1022-1034) raises these to
+        # match the furniture it just delivered; ~max does not touch them.
+        toon.b_setMaxClothes(closet.getMaxClothes())
+        toon.b_setMaxAccessories(trunk.getMaxAccessories())
+        toon.b_setMaxBankMoney(bank.getMaxBankMoney())
+
+        return "Furnished {}'s house with a closet, a trunk, a bank and {} attic item(s).".format(
+            toon.getName(), len(atticItems))
+
 class Disguise(MagicWord):
     aliases = ["cogsuit"]
     desc = "Gives the target a complete cog disguise for one department and unlocks the disguise page."
