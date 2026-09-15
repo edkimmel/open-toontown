@@ -56,6 +56,11 @@ else:
 if simbase.wantKarts:
     from toontown.racing.KartDNA import *
 
+# seconds: the soonest a delivery wake-up may fire, and the retry delay
+# while a full mailbox is holding an order back
+DeliveryMinDelay = 10.0
+DeliveryFullRetry = 60.0
+
 class DistributedToonAI(DistributedPlayerAI.DistributedPlayerAI, DistributedSmoothNodeAI.DistributedSmoothNodeAI, PetLookerAI.PetLookerAI):
     notify = DirectNotifyGlobal.directNotify.newCategory('DistributedToonAI')
     maxCallsPerNPC = 100
@@ -2211,136 +2216,97 @@ class DistributedToonAI(DistributedPlayerAI.DistributedPlayerAI, DistributedSmoo
 
     def b_setDeliverySchedule(self, onOrder, doUpdateLater = True):
         self.setDeliverySchedule(onOrder, doUpdateLater)
-        self.d_setDeliverySchedule(onOrder)
+        self.d_setDeliverySchedule(self.onOrder)
 
     def d_setDeliverySchedule(self, onOrder):
         self.sendUpdate('setDeliverySchedule', [onOrder.getBlob(store=CatalogItem.Customization | CatalogItem.DeliveryDate)])
 
     def setDeliverySchedule(self, onOrder, doUpdateLater = True):
-        self.setBothSchedules(onOrder, None)
-        return
-        self.onOrder = CatalogItemList.CatalogItemList(onOrder, store=CatalogItem.Customization | CatalogItem.DeliveryDate)
-        if hasattr(self, 'name'):
-            if doUpdateLater and self.air.doLiveUpdates and hasattr(self, 'air'):
-                taskName = self.uniqueName('next-delivery')
-                taskMgr.remove(taskName)
-                now = int(time.time() / 60 + 0.5)
-                nextItem = None
-                nextTime = self.onOrder.getNextDeliveryDate()
-                nextItem = self.onOrder.getNextDeliveryItem()
-                if nextItem != None:
-                    pass
-                if nextTime != None:
-                    duration = max(10.0, nextTime * 60 - time.time())
-                    taskMgr.doMethodLater(duration, self.__deliverPurchase, taskName)
-        return
+        self.setBothSchedules(onOrder, None, doUpdateLater)
 
     def getDeliverySchedule(self):
         return self.onOrder.getBlob(store=CatalogItem.Customization | CatalogItem.DeliveryDate)
 
+    def b_setGiftSchedule(self, onGiftOrder, doUpdateLater = True):
+        self.setGiftSchedule(onGiftOrder, doUpdateLater)
+        self.d_setGiftSchedule(self.onGiftOrder)
+
+    def d_setGiftSchedule(self, onGiftOrder):
+        self.sendUpdate('setGiftSchedule', [onGiftOrder.getBlob(store=CatalogItem.Customization | CatalogItem.DeliveryDate)])
+
+    def setGiftSchedule(self, onGiftOrder, doUpdateLater = True):
+        self.setBothSchedules(None, onGiftOrder, doUpdateLater)
+
+    def getGiftSchedule(self):
+        return self.onGiftOrder.getBlob(store=CatalogItem.Customization | CatalogItem.DeliveryDate)
+
     def b_setBothSchedules(self, onOrder, onGiftOrder, doUpdateLater = True):
         self.setBothSchedules(onOrder, onGiftOrder, doUpdateLater)
-        self.d_setDeliverySchedule(onOrder)
+        if onOrder != None:
+            self.d_setDeliverySchedule(self.onOrder)
+        if onGiftOrder != None:
+            self.d_setGiftSchedule(self.onGiftOrder)
 
     def setBothSchedules(self, onOrder, onGiftOrder, doUpdateLater = True):
         if onOrder != None:
             self.onOrder = CatalogItemList.CatalogItemList(onOrder, store=CatalogItem.Customization | CatalogItem.DeliveryDate)
         if onGiftOrder != None:
             self.onGiftOrder = CatalogItemList.CatalogItemList(onGiftOrder, store=CatalogItem.Customization | CatalogItem.DeliveryDate)
+        if doUpdateLater:
+            self.scheduleNextDelivery()
+
+    def scheduleNextDelivery(self, minDelay = DeliveryMinDelay):
+        """Keeps one pending wake-up for both queues, at the earliest deadline.
+
+        The task is always replaced, so a queue change can neither stack a
+        second wake-up nor leave a stale one behind.
+        """
         if not hasattr(self, 'air') or self.air == None:
             return
-        if doUpdateLater and self.air.doLiveUpdates and hasattr(self, 'name'):
-            taskName = 'next-bothDelivery-%s' % self.doId
-            now = int(time.time() / 60 + 0.5)
-            nextItem = None
-            nextGiftItem = None
-            nextTime = None
-            nextGiftTime = None
-            if self.onOrder:
-                nextTime = self.onOrder.getNextDeliveryDate()
-                nextItem = self.onOrder.getNextDeliveryItem()
-            if self.onGiftOrder:
-                nextGiftTime = self.onGiftOrder.getNextDeliveryDate()
-                nextGiftItem = self.onGiftOrder.getNextDeliveryItem()
-            if nextItem:
-                pass
-            if nextGiftItem:
-                pass
-            if nextTime == None:
-                nextTime = nextGiftTime
-            if nextGiftTime == None:
-                nextGiftTime = nextTime
-            if nextGiftTime is not None and nextTime is not None and nextGiftTime < nextTime:
-                nextTime = nextGiftTime
-            existingDuration = None
-            checkTaskList = taskMgr.getTasksNamed(taskName)
-            if checkTaskList:
-                currentTime = globalClock.getFrameTime()
-                checkTask = checkTaskList[0]
-                existingDuration = checkTask.wakeTime - currentTime
-            if nextTime:
-                newDuration = max(10.0, nextTime * 60 - time.time())
-                if existingDuration and existingDuration >= newDuration:
-                    taskMgr.remove(taskName)
-                    taskMgr.doMethodLater(newDuration, self.__deliverBothPurchases, taskName)
-                elif existingDuration and existingDuration < newDuration:
-                    pass
-                else:
-                    taskMgr.doMethodLater(newDuration, self.__deliverBothPurchases, taskName)
-        return
+        taskName = self.uniqueName('next-delivery')
+        taskMgr.remove(taskName)
+        if not self.air.doLiveUpdates or not hasattr(self, 'name'):
+            return
+        nextTime = self.onOrder.getNextDeliveryDate()
+        nextGiftTime = self.onGiftOrder.getNextDeliveryDate()
+        if nextTime == None or (nextGiftTime != None and nextGiftTime < nextTime):
+            nextTime = nextGiftTime
+        if nextTime == None:
+            return
+        duration = max(minDelay, nextTime * 60 - time.time())
+        taskMgr.doMethodLater(duration, self.__deliverBothPurchases, taskName)
 
     def __deliverBothPurchases(self, task):
         now = int(time.time() / 60 + 0.5)
         delivered, remaining = self.onOrder.extractDeliveryItems(now)
         deliveredGifts, remainingGifts = self.onGiftOrder.extractDeliveryItems(now)
-        simbase.air.deliveryManager.sendDeliverGifts(self.getDoId(), now)
-        giftItem = CatalogItemList.CatalogItemList(deliveredGifts, store=CatalogItem.Customization | CatalogItem.DeliveryDate)
-        if len(giftItem) > 0:
-            self.air.writeServerEvent('Getting Gift', self.doId, 'sender %s receiver %s gift %s' % (giftItem[0].giftTag, self.doId, giftItem[0].getName()))
-        self.b_setMailboxContents(self.mailboxContents + delivered + deliveredGifts)
-        self.b_setCatalogNotify(self.catalogNotify, ToontownGlobals.NewItems)
-        self.b_setBothSchedules(remaining, remainingGifts)
+        room = ToontownGlobals.MaxMailboxContents - len(self.mailboxContents)
+        delivered, heldBack = self.__splitForMailbox(delivered, room)
+        deliveredGifts, heldBackGifts = self.__splitForMailbox(deliveredGifts, room - len(delivered))
+        if len(deliveredGifts) > 0:
+            # the AI has no delivery manager, so the sender cannot be told the
+            # gift arrived; the gift itself still reaches the mailbox
+            self.notify.warning('no delivery manager: %s gift(s) for %s arrive without notifying the sender' % (len(deliveredGifts), self.doId))
+            self.air.writeServerEvent('Getting Gift', self.doId, 'sender %s receiver %s gift %s' % (deliveredGifts[0].giftTag, self.doId, deliveredGifts[0].getName()))
+        if len(delivered) > 0 or len(deliveredGifts) > 0:
+            self.notify.info('Delivery for %s: %s.' % (self.doId, delivered + deliveredGifts))
+            self.b_setMailboxContents(self.mailboxContents + delivered + deliveredGifts)
+            self.b_setCatalogNotify(self.catalogNotify, ToontownGlobals.NewItems)
+        self.b_setBothSchedules(heldBack + remaining, heldBackGifts + remainingGifts)
+        if len(heldBack) > 0 or len(heldBackGifts) > 0:
+            # the mailbox is full: hold the rest of a paid order and try again
+            # later rather than spinning on a deadline that has already passed
+            self.scheduleNextDelivery(DeliveryFullRetry)
         return Task.done
 
-    def setGiftSchedule(self, onGiftOrder, doUpdateLater = True):
-        self.setBothSchedules(None, onGiftOrder)
-        return
-        self.onGiftOrder = CatalogItemList.CatalogItemList(onGiftOrder, store=CatalogItem.Customization | CatalogItem.DeliveryDate)
-        if doUpdateLater and self.air.doLiveUpdates and hasattr(self, 'air') and hasattr(self, 'name'):
-            taskName = self.uniqueName('next-gift')
-            taskMgr.remove(taskName)
-            now = int(time.time() / 60 + 0.5)
-            nextItem = None
-            nextTime = self.onGiftOrder.getNextDeliveryDate()
-            nextItem = self.onGiftOrder.getNextDeliveryItem()
-            if nextItem != None:
-                pass
-            if nextTime != None:
-                duration = max(10.0, nextTime * 60 - time.time())
-                duration += 30
-                taskMgr.doMethodLater(duration, self.__deliverGiftPurchase, taskName)
-        return
-
-    def getGiftSchedule(self):
-        return self.onGiftOrder.getBlob(store=CatalogItem.Customization | CatalogItem.DeliveryDate)
-
-    def __deliverGiftPurchase(self, task):
-        now = int(time.time() / 60 + 0.5)
-        delivered, remaining = self.onGiftOrder.extractDeliveryItems(now)
-        self.notify.info('Gift Delivery for %s: %s.' % (self.doId, delivered))
-        self.b_setMailboxContents(self.mailboxContents + delivered)
-        simbase.air.deliveryManager.sendDeliverGifts(self.getDoId(), now)
-        self.b_setCatalogNotify(self.catalogNotify, ToontownGlobals.NewItems)
-        return Task.done
-
-    def __deliverPurchase(self, task):
-        now = int(time.time() / 60 + 0.5)
-        delivered, remaining = self.onOrder.extractDeliveryItems(now)
-        self.notify.info('Delivery for %s: %s.' % (self.doId, delivered))
-        self.b_setMailboxContents(self.mailboxContents + delivered)
-        self.b_setDeliverySchedule(remaining)
-        self.b_setCatalogNotify(self.catalogNotify, ToontownGlobals.NewItems)
-        return Task.done
+    def __splitForMailbox(self, delivered, room):
+        """Splits off whatever will not fit within MaxMailboxContents
+        (toontown/toonbase/ToontownGlobals.py:40).  An item that does not fit
+        stays on order; a paid list is never truncated."""
+        room = max(0, room)
+        if len(delivered) <= room:
+            return (delivered, CatalogItemList.CatalogItemList(store=delivered.store))
+        return (delivered[0:room], delivered[room:len(delivered)])
 
     def b_setMailboxContents(self, mailboxContents):
         self.setMailboxContents(mailboxContents)
