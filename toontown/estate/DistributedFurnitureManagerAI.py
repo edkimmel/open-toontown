@@ -2,6 +2,8 @@ from direct.directnotify import DirectNotifyGlobal
 from direct.distributed.DistributedObjectAI import DistributedObjectAI
 
 from toontown.catalog import CatalogFurnitureItem
+from toontown.catalog import CatalogItem
+from toontown.estate.DistributedFurnitureItemAI import DistributedFurnitureItemAI
 from toontown.estate.DistributedPhoneAI import DistributedPhoneAI
 
 # every house has a telephone, and it cannot be put away
@@ -52,6 +54,20 @@ class DistributedFurnitureManagerAI(DistributedObjectAI):
 
     def getDeletedItems(self):
         return self.house.getDeletedItems()
+
+    def d_setAtticItems(self, blob):
+        self.sendUpdate('setAtticItems', [blob])
+
+    def b_setAtticItems(self, blob):
+        self.house.setAtticItems(blob)
+        self.d_setAtticItems(blob)
+
+    def d_setDeletedItems(self, blob):
+        self.sendUpdate('setDeletedItems', [blob])
+
+    def b_setDeletedItems(self, blob):
+        self.house.setDeletedItems(blob)
+        self.d_setDeletedItems(blob)
 
     def getDirector(self):
         return self.directorAvId
@@ -119,6 +135,113 @@ class DistributedFurnitureManagerAI(DistributedObjectAI):
             return
         self.watchingAvIds.discard(avId)
         self.ignore(self.air.getAvatarExitEvent(avId))
+
+    def __mayMutate(self, avId):
+        return avId != 0 and avId == self.directorAvId and avId == self.getOwnerId()
+
+    def __reindexAfterRemoval(self, removedIndex):
+        for distObj in self.items:
+            if distObj.interiorIndex is not None and distObj.interiorIndex > removedIndex:
+                distObj.interiorIndex -= 1
+
+    def __removeFromInterior(self, interiorIndex):
+        items = self.house.getInteriorItemList()
+        if interiorIndex is None or interiorIndex >= len(items):
+            return
+        del items[interiorIndex]
+        self.house.setInteriorItemList(items)
+        self.__reindexAfterRemoval(interiorIndex)
+
+    def __findItem(self, doId):
+        distObj = self.air.doId2do.get(doId)
+        if distObj is None or distObj not in self.items:
+            return None
+        return distObj
+
+    def moveItemToAtticMessage(self, doId, context):
+        avId = self.air.getAvatarIdFromSender()
+        retcode = -1
+        if self.__mayMutate(avId):
+            distObj = self.__findItem(doId)
+            if distObj is not None and distObj.item.isDeletable():
+                self.__removeFromInterior(distObj.interiorIndex)
+                attic = self.house.getAtticItemList()
+                attic.append(distObj.item)
+                self.b_setAtticItems(attic.getBlob())
+                self.items.remove(distObj)
+                distObj.requestDelete()
+                retcode = 0
+        self.sendUpdateToAvatarId(avId, 'moveItemToAtticResponse', [retcode, context])
+
+    def moveItemFromAtticMessage(self, index, x, y, z, h, p, r, context):
+        avId = self.air.getAvatarIdFromSender()
+        retcode = -1
+        objectId = 0
+        if self.__mayMutate(avId):
+            attic = self.house.getAtticItemList()
+            if index < len(attic):
+                item = attic.pop(index)
+                self.b_setAtticItems(attic.getBlob())
+                item.posHpr = (x, y, z, h, p, r)
+                interior = self.house.getInteriorItemList()
+                interiorIndex = len(interior)
+                interior.append(item)
+                self.house.setInteriorItemList(interior)
+                distObj = DistributedFurnitureItemAI(self.air, self, item,
+                                                     interiorIndex=interiorIndex)
+                distObj.generateWithRequired(self.zoneId)
+                self.items.append(distObj)
+                objectId = distObj.doId
+                retcode = 0
+        self.sendUpdateToAvatarId(avId, 'moveItemFromAtticResponse',
+                                  [retcode, objectId, context])
+
+    def deleteItemFromAtticMessage(self, blob, index, context):
+        avId = self.air.getAvatarIdFromSender()
+        retcode = -1
+        if self.__mayMutate(avId):
+            attic = self.house.getAtticItemList()
+            offered = CatalogItem.getItem(bytes(blob), store=CatalogItem.Customization)
+            if index < len(attic) and attic[index] == offered:
+                removed = attic.pop(index)
+                self.b_setAtticItems(attic.getBlob())
+                deleted = self.house.getDeletedItemList()
+                deleted.append(removed)
+                self.b_setDeletedItems(deleted.getBlob())
+                retcode = 0
+        self.sendUpdateToAvatarId(avId, 'deleteItemFromAtticResponse', [retcode, context])
+
+    def deleteItemFromRoomMessage(self, blob, doId, context):
+        avId = self.air.getAvatarIdFromSender()
+        retcode = -1
+        if self.__mayMutate(avId):
+            distObj = self.__findItem(doId)
+            offered = CatalogItem.getItem(bytes(blob), store=CatalogItem.Customization)
+            if (distObj is not None and distObj.item == offered and
+                    distObj.item.isDeletable()):
+                self.__removeFromInterior(distObj.interiorIndex)
+                deleted = self.house.getDeletedItemList()
+                deleted.append(distObj.item)
+                self.b_setDeletedItems(deleted.getBlob())
+                self.items.remove(distObj)
+                distObj.requestDelete()
+                retcode = 0
+        self.sendUpdateToAvatarId(avId, 'deleteItemFromRoomResponse', [retcode, context])
+
+    def recoverDeletedItemMessage(self, blob, index, context):
+        avId = self.air.getAvatarIdFromSender()
+        retcode = -1
+        if self.__mayMutate(avId):
+            deleted = self.house.getDeletedItemList()
+            offered = CatalogItem.getItem(bytes(blob), store=CatalogItem.Customization)
+            if index < len(deleted) and deleted[index] == offered:
+                removed = deleted.pop(index)
+                self.b_setDeletedItems(deleted.getBlob())
+                attic = self.house.getAtticItemList()
+                attic.append(removed)
+                self.b_setAtticItems(attic.getBlob())
+                retcode = 0
+        self.sendUpdateToAvatarId(avId, 'recoverDeletedItemResponse', [retcode, context])
 
     def createFurniture(self, zoneId):
         """Generate a distributed object for each item standing in the room.
