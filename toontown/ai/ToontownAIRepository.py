@@ -196,6 +196,7 @@ class ToontownAIRepository(ToontownInternalRepository):
         self.timeManager = TimeManagerAI(self)
         self.timeManager.generateWithRequired(OTP_ZONE_ID_MANAGEMENT)
 
+
         # Generate our news manager...
         self.newsManager = NewsManagerAI(self)
         self.newsManager.generateWithRequired(OTP_ZONE_ID_MANAGEMENT)
@@ -388,6 +389,25 @@ class ToontownAIRepository(ToontownInternalRepository):
                 self.notify.info('want-dev-force-suit-building: forced suitTakeOver(block=4, track=c, difficulty=1, height=2) on zone %d for elevator_headless.gd' % devZone)
             else:
                 self.notify.warning('want-dev-force-suit-building: no suitPlanner/buildingMgr for zone %d, could not force a suit building' % devZone)
+
+        # DEV-ONLY TEST HOOK, sibling of `want-dev-force-suit-building`
+        # above.  Forces a cogdominium takeover on a block directly via
+        # DistributedSuitPlannerAI.cogdoTakeOver(blockNumber, suitTrack,
+        # difficulty, buildingHeight) (`DistributedSuitPlannerAI.py:
+        # 667-671`), the same call a real walking-suit takeover eventually
+        # makes (`DistributedSuitAI.py:348`), without waiting on one.
+        # Uses a different block (6) than the suit hook's block (4) on the
+        # same zone so both can be enabled together.  `want-cogdominiums`
+        # (default true) must also be on for the building manager to exist.
+        if config.GetBool('want-dev-force-cogdo-building', False):
+            devCogdoZone = config.GetInt('dev-force-cogdo-building-zone', ToontownGlobals.LoopyLane)
+            devCogdoBlock = config.GetInt('dev-force-cogdo-building-block', 6)
+            devCogdoPlanner = self.suitPlanners.get(devCogdoZone)
+            if devCogdoPlanner is not None and devCogdoPlanner.buildingMgr is not None:
+                devCogdoPlanner.cogdoTakeOver(devCogdoBlock, 'c', 1, 1)
+                self.notify.info('want-dev-force-cogdo-building: forced cogdoTakeOver(block=%d, track=c, difficulty=1, height=1) on zone %d' % (devCogdoBlock, devCogdoZone))
+            else:
+                self.notify.warning('want-dev-force-cogdo-building: no suitPlanner/buildingMgr for zone %d, could not force a cogdo building' % devCogdoZone)
 
     def genDNAFileName(self, zoneId):
         canonicalZoneId = ZoneUtil.getCanonicalZoneId(zoneId)
