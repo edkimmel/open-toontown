@@ -109,3 +109,10 @@ class FriendManager(DistributedObject.DistributedObject):
 
     def submitSecretResponse(self, result, avId):
         messenger.send('submitSecretResponse', [result, avId])
+
+    def up_getFriendsListRequest(self):
+        self.sendUpdate('getFriendsListRequest', [])
+
+    def getFriendsListResponse(self, errorCode, friendDetails):
+        self.notify.debug('Client: getFriendsListResponse(%d, %d)' % (errorCode, len(friendDetails)))
+        base.cr.handleGetFriendsListResponse(errorCode, friendDetails)

@@ -229,10 +229,11 @@ class FriendManagerAI(DistributedObjectAI):
         """Two-way friendship between two toons that are both on this AI.
 
         `extendFriendsList` mutates the list in place
-        (`toontown/toon/DistributedToonAI.py:611-618`); `d_setFriendsList`
-        only broadcasts.  `setFriendsList` is deliberately not used here
-        since it hands `friendsList[-1]` to `questManager.toonMadeFriend`
-        as if it were an id (`:600-606`).
+        (`toontown/toon/DistributedToonAI.py:611-618`); `b_setFriendsList`
+        then stores it and sends the field update.  `setFriendsList` is a
+        `db` field (`etc/otp.dc:245`) on an activated object, so that one
+        update is what the database keeps -- the same path `b_setMoney`
+        takes (`DistributedToonAI.py:2431-2438`).
         """
         toon = self._getToon(avId)
         other = self._getToon(otherId)
@@ -247,11 +248,75 @@ class FriendManagerAI(DistributedObjectAI):
 
         toon.extendFriendsList(otherId, friendCode)
         other.extendFriendsList(avId, friendCode)
-        toon.d_setFriendsList(toon.getFriendsList())
-        other.d_setFriendsList(other.getFriendsList())
+        toon.b_setFriendsList(toon.getFriendsList())
+        other.b_setFriendsList(other.getFriendsList())
         return True
 
     def forgetAvatar(self, avId):
         """Drop any pending invite that mentions an avatar that has left."""
         for context in [c for c, pair in self.invites.items() if avId in pair]:
             del self.invites[context]
+
+    # The friends-list fetch (`getFriendsListRequest` /
+    # `getFriendsListResponse`, `etc/otp.dc`).  This is what the client needs
+    # for a friend that is *not* generated to it: name, DNA and pet id, the
+    # same payload the legacy `CLIENT_GET_FRIEND_LIST` reply carried
+    # (`toontown/distributed/ToontownClientRepository.py:902-911`).
+    def getFriendsListRequest(self):
+        avId = self.air.getAvatarIdFromSender()
+        av = self._getToon(avId)
+        if av is None:
+            self.notify.warning('getFriendsListRequest from unknown avatar %s' % avId)
+            self._sendFriendsList(avId, 1, [])
+            return
+
+        details = []
+        offline = []
+        for pair in self._friendsList(av):
+            friend = self._getToon(pair[0])
+            if friend is None:
+                offline.append(pair[0])
+            else:
+                details.append([pair[0], friend.getName(), friend.getDNAString(),
+                                self._getPetId(friend)])
+
+        if not offline:
+            self._sendFriendsList(avId, 0, details)
+            return
+
+        # The rest are not on this AI, so their fields only exist in the
+        # database (`otp/login/AstronLoginManagerUD.py:533-540` is the same
+        # query shape).
+        remaining = [len(offline)]
+
+        def makeCallback(friendId):
+
+            def gotFriend(dclass, fields):
+                remaining[0] -= 1
+                if fields and dclass == self.air.dclassesByName['DistributedToonUD']:
+                    details.append([friendId,
+                                    fields['setName'][0],
+                                    fields['setDNAString'][0],
+                                    fields.get('setPetId', (0,))[0]])
+                else:
+                    self.notify.warning('no database row for friend %s' % friendId)
+                if not remaining[0]:
+                    self._sendFriendsList(avId, 0, details)
+
+            return gotFriend
+
+        for friendId in offline:
+            self.air.dbInterface.queryObject(self.air.dbId, friendId,
+                                             makeCallback(friendId))
+
+    def _getPetId(self, toon):
+        # `getPetId` only exists when pets are wanted
+        # (`toontown/toon/DistributedToonAI.py:3018-3021`).
+        if hasattr(toon, 'getPetId'):
+            return toon.getPetId()
+
+        return 0
+
+    def _sendFriendsList(self, avId, errorCode, details):
+        self.sendUpdateToAvatarId(avId, 'getFriendsListResponse',
+                                  [errorCode, details])
