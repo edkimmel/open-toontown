@@ -206,6 +206,7 @@ class DistributedHouseAI(DistributedObjectAI):
         self.furnitureMgr = DistributedFurnitureManagerAI(self.air, self, self.interior)
         self.furnitureMgr.generateWithRequired(self.interiorZoneId)
         self.furnitureMgr.createFurniture(self.interiorZoneId)
+        self.d_setHouseReady()
 
     def createMailbox(self):
         self.mailbox = DistributedMailboxAI(self.air, self)

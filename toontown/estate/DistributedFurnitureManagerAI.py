@@ -3,8 +3,11 @@ from direct.distributed.DistributedObjectAI import DistributedObjectAI
 
 from toontown.catalog import CatalogFurnitureItem
 from toontown.catalog import CatalogItem
+from toontown.estate.DistributedBankAI import DistributedBankAI
+from toontown.estate.DistributedClosetAI import DistributedClosetAI
 from toontown.estate.DistributedFurnitureItemAI import DistributedFurnitureItemAI
 from toontown.estate.DistributedPhoneAI import DistributedPhoneAI
+from toontown.estate.DistributedTrunkAI import DistributedTrunkAI
 
 # every house has a telephone, and it cannot be put away
 # (toontown/estate/houseDesign.py:1546)
@@ -249,10 +252,10 @@ class DistributedFurnitureManagerAI(DistributedObjectAI):
         (toontown/estate/DistributedFurnitureItem.py:56-61), so the manager
         and the interior must already exist."""
         hasPhone = False
-        for item in self.house.getInteriorItemList():
+        for interiorIndex, item in enumerate(self.house.getInteriorItemList()):
             if self.__isPhone(item):
                 hasPhone = True
-            self.__generateItem(item, zoneId)
+            self.__generateItem(item, zoneId, interiorIndex=interiorIndex)
 
         if not hasPhone:
             self.__generateItem(
@@ -273,12 +276,18 @@ class DistributedFurnitureManagerAI(DistributedObjectAI):
         return (isinstance(item, CatalogFurnitureItem.CatalogFurnitureItem) and
                 item.getFlags() & CatalogFurnitureItem.FLPhone)
 
-    def __generateItem(self, item, zoneId):
+    def __generateItem(self, item, zoneId, interiorIndex=None):
+        flags = item.getFlags()
         if self.__isPhone(item):
             distObj = DistributedPhoneAI(self.air, self, item)
+        elif flags & CatalogFurnitureItem.FLBank:
+            distObj = DistributedBankAI(self.air, self, item, interiorIndex=interiorIndex)
+        elif flags & CatalogFurnitureItem.FLTrunk:
+            distObj = DistributedTrunkAI(self.air, self, item, interiorIndex=interiorIndex)
+        elif flags & CatalogFurnitureItem.FLCloset:
+            distObj = DistributedClosetAI(self.air, self, item, interiorIndex=interiorIndex)
         else:
-            # the rest of the furniture is not interactive yet
-            return None
+            distObj = DistributedFurnitureItemAI(self.air, self, item, interiorIndex=interiorIndex)
         distObj.generateWithRequired(zoneId)
         self.items.append(distObj)
         return distObj
