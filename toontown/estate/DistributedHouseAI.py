@@ -142,6 +142,33 @@ class DistributedHouseAI(DistributedObjectAI):
         return CatalogItemList.CatalogItemList(
             self.interiorItems, store=CatalogItem.Customization | CatalogItem.Location)
 
+    def setInteriorItemList(self, items):
+        self.interiorItems = items.getBlob(
+            store=CatalogItem.Customization | CatalogItem.Location)
+
+    def getAtticItemList(self):
+        return CatalogItemList.CatalogItemList(
+            self.atticItems, store=CatalogItem.Customization)
+
+    def addAtticItem(self, item):
+        """CatalogFurnitureItem.recordPurchase calls this to deliver a
+        purchase into the attic (toontown/catalog/CatalogFurnitureItem.py:1032)."""
+        items = self.getAtticItemList()
+        items.append(item)
+        self.setAtticItems(items.getBlob())
+
+    def getAtticWallpaperList(self):
+        return CatalogItemList.CatalogItemList(
+            self.atticWallpaper, store=CatalogItem.Customization)
+
+    def getAtticWindowList(self):
+        return CatalogItemList.CatalogItemList(
+            self.atticWindows, store=CatalogItem.Customization)
+
+    def getDeletedItemList(self):
+        return CatalogItemList.CatalogItemList(
+            self.deletedItems, store=CatalogItem.Customization)
+
     def getNumHouseItems(self):
         """The count the catalog compares against MaxHouseItems, computed the
         way toontown/catalog/CatalogAtticItem.py:24-26 computes it."""
