@@ -1,4 +1,5 @@
 from panda3d.core import *
+from direct.showbase.PythonUtil import Functor
 from direct.interval.IntervalGlobal import *
 from toontown.toonbase.ToonBaseGlobal import *
 from toontown.toonbase.ToontownGlobals import *

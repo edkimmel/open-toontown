@@ -1,7 +1,7 @@
 from direct.directnotify import DirectNotifyGlobal
 from . import CatalogItem
 from . import CatalogItemList
-from .CatalogFurnitureItem import CatalogFurnitureItem, nextAvailableCloset, getAllClosets, get50ItemCloset, getMaxClosets, get50ItemTrunk
+from .CatalogFurnitureItem import CatalogFurnitureItem, nextAvailableCloset, getAllClosets, get50ItemCloset, getMaxClosets, get50ItemTrunk, getMaxTrunks
 from .CatalogAnimatedFurnitureItem import CatalogAnimatedFurnitureItem
 from .CatalogClothingItem import CatalogClothingItem, getAllClothes
 from .CatalogChatItem import CatalogChatItem, getChatRange
@@ -1761,7 +1761,7 @@ class CatalogGenerator:
                 elif item == get50ItemTrunk:
                     item = getMaxTrunks()
                 else:
-                    self.notify.warning("Don't know how to interpret function " % repr(name))
+                    self.notify.warning("Don't know how to interpret function %s" % repr(item))
                     item = None
             elif isinstance(item, tuple):
                 item = item[1]
