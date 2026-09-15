@@ -421,6 +421,24 @@ class SetBankMoney(MagicWord):
         toon.b_setBankMoney(money)
         return "{}'s banked jellybeans have been set to {}.".format(toon.getName(), money)
 
+class Deliver(MagicWord):
+    desc = "Forces every catalog item currently on order to be delivered right now. Debug use only; has no effect on normal delivery timing."
+    execLocation = MagicWordConfig.EXEC_LOC_SERVER
+
+    def handleWord(self, invoker, avId, toon, *args):
+        if not len(toon.onOrder):
+            return "{} has nothing on order.".format(toon.getName())
+
+        now = int(time.time() / 60 + 0.5)
+        items = list(toon.onOrder)
+        for item in items:
+            item.deliveryDate = now
+        count = len(items)
+
+        toon.b_setBothSchedules(items, None)
+        toon._DistributedToonAI__deliverBothPurchases(None)
+        return "Delivered {} item(s) to {}.".format(count, toon.getName())
+
 class Disguise(MagicWord):
     aliases = ["cogsuit"]
     desc = "Gives the target a complete cog disguise for one department and unlocks the disguise page."
