@@ -1,3 +1,6 @@
+import copy
+import time
+
 from direct.directnotify import DirectNotifyGlobal
 from direct.distributed.ClockDelta import globalClockDelta
 from direct.task.Task import Task
@@ -130,9 +133,9 @@ class DistributedPhoneAI(DistributedFurnitureItemAI):
         if retcode is not None:
             return retcode
         if item.getDeliveryTime():
-            # only items that arrive at once are handled here
+            # an item with a delivery time arrives by mail instead
             # (toontown/catalog/CatalogItem.py:155-156)
-            return ToontownGlobals.P_NoPurchaseMethod
+            return self.__order(av, item, price)
         retcode = self.__checkIndex(av, item)
         if retcode is not None:
             return retcode
@@ -147,6 +150,26 @@ class DistributedPhoneAI(DistributedFurnitureItemAI):
         if not av.takeMoney(price):
             self.notify.warning('could not charge %s %s for %s' % (av.doId, price, item))
         return retcode
+
+    def __order(self, av, item, price):
+        """Pays for an item that does not arrive at once and queues it.
+
+        The item's own grant runs when the mailbox is opened, so
+        recordPurchase must not run here; only the deadline is set, on a copy,
+        so the catalog entry it came from keeps no delivery date.
+        """
+        if av.getTotalMoney() < price:
+            return ToontownGlobals.P_NotEnoughMoney
+        item = copy.copy(item)
+        # the same rounding the delivery queue uses
+        # (toontown/toon/DistributedToonAI.py:2282)
+        item.deliveryDate = int(time.time() / 60 + 0.5) + item.getDeliveryTime()
+        av.onOrder.append(item)
+        av.b_setDeliverySchedule(av.onOrder)
+        # charge last: a failure here costs the shop, not the shopper
+        if not av.takeMoney(price):
+            self.notify.warning('could not charge %s %s for %s' % (av.doId, price, item))
+        return ToontownGlobals.P_ItemOnOrder
 
     def __checkIndex(self, av, item):
         """Rejects an out-of-range emote before the grant writes past the end.
