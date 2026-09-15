@@ -350,6 +350,32 @@ class GagExp(MagicWord):
         toon.d_setExperience(toon.experience.makeNetString())
         return f"Set {ToontownBattleGlobals.Tracks[track]} experience to {value} for {toon.getName()}."
 
+class GameAccess(MagicWord):
+    # Session-only: setAccess is `required ram`, not `db`, so this does not
+    # persist across a reconnect.
+    aliases = ["gameaccess"]
+    desc = "Sets the target's game access level for this session only (not saved to the database)."
+    execLocation = MagicWordConfig.EXEC_LOC_SERVER
+    arguments = [("level", str, True)]
+
+    _NAMES = {
+        "full": OTPGlobals.AccessFull,
+        "velvetrope": OTPGlobals.AccessVelvetRope,
+    }
+
+    def handleWord(self, invoker, avId, toon, *args):
+        levelArg = args[0].lower()
+
+        if levelArg in self._NAMES:
+            level = self._NAMES[levelArg]
+        elif levelArg.isdigit() and int(levelArg) in self._NAMES.values():
+            level = int(levelArg)
+        else:
+            return "Invalid access level. Use one of: full, velvetrope, 2, 1."
+
+        toon.setGameAccess(level)
+        return "Set {}'s game access to {} for this session.".format(toon.getName(), levelArg)
+
 class SetPinkSlips(MagicWord):
     # this command gives the target toon the specified amount of pink slips
     # default is 255
