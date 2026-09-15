@@ -158,6 +158,12 @@ class DistributedPhoneAI(DistributedFurnitureItemAI):
         recordPurchase must not run here; only the deadline is set, on a copy,
         so the catalog entry it came from keeps no delivery date.
         """
+        if len(av.mailboxContents) + len(av.onOrder) >= ToontownGlobals.MaxMailboxContents:
+            # nothing is charged for an order that could only wait outside a
+            # mailbox that is already full: the same limit the delivery splits
+            # on (toontown/toon/DistributedToonAI.py:2285) and the shopper is
+            # warned about (toontown/catalog/CatalogItemPanel.py:499)
+            return ToontownGlobals.P_NoRoomForItem
         if av.getTotalMoney() < price:
             return ToontownGlobals.P_NotEnoughMoney
         item = copy.copy(item)
