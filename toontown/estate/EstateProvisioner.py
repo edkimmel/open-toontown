@@ -3,6 +3,21 @@ from direct.directnotify import DirectNotifyGlobal
 NUM_HOUSE_SLOTS = 6
 
 
+def fieldValue(fields, name, default=None):
+    """Read one field out of a database query result.  A query reports each
+    field as its argument list (direct/distributed/AstronDatabaseInterface.py
+    unpacks with DCField.unpackArgs), so a single-argument field arrives as a
+    one-element sequence."""
+    value = fields.get(name)
+    if value is None:
+        return default
+    if isinstance(value, (list, tuple)) and len(value) == 1:
+        value = value[0]
+    if value is None:
+        return default
+    return value
+
+
 class EstateProvisionOperation:
     """Reads an account, creating its estate record and a house record for
     every occupied avatar slot if they do not exist yet."""
@@ -34,10 +49,10 @@ class EstateProvisionOperation:
             self.__finish()
             return
 
-        avList = list(fields.get('ACCOUNT_AV_SET') or [])[:NUM_HOUSE_SLOTS]
+        avList = list(fieldValue(fields, 'ACCOUNT_AV_SET', []))[:NUM_HOUSE_SLOTS]
         avList += [0] * (NUM_HOUSE_SLOTS - len(avList))
         self.avList = avList
-        self.estateId = fields.get('ESTATE_ID') or 0
+        self.estateId = fieldValue(fields, 'ESTATE_ID', 0)
         if self.estateId:
             self.__provisionHouses()
             return
@@ -80,7 +95,7 @@ class EstateProvisionOperation:
 
     def __handleEstateLinked(self, fields):
         if fields:
-            estateId = fields.get('ESTATE_ID') or 0
+            estateId = fieldValue(fields, 'ESTATE_ID', 0)
             if estateId:
                 # Somebody else linked an estate to this account first; that
                 # one wins and the record we made is left unreferenced.
@@ -126,7 +141,7 @@ class EstateProvisionOperation:
             self.__nextSlot()
             return
 
-        houseId = fields.get('setHouseId') or 0
+        houseId = fieldValue(fields, 'setHouseId', 0)
         if houseId:
             self.houseIds[self.slot] = houseId
             self.__nextSlot()
@@ -176,7 +191,7 @@ class EstateProvisionOperation:
     def __handleHouseLinked(self, fields):
         if fields:
             # The avatar was given a house elsewhere while we were working.
-            self.houseIds[self.slot] = fields.get('setHouseId') or self.houseIds[self.slot]
+            self.houseIds[self.slot] = fieldValue(fields, 'setHouseId', self.houseIds[self.slot])
 
         self.__nextSlot()
 
