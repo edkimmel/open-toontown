@@ -1,34 +1,11 @@
 from direct.directnotify import DirectNotifyGlobal
 
-from toontown.estate.DistributedEstateAI import DistributedEstateAI
-from toontown.estate.DistributedHouseAI import DistributedHouseAI
 from toontown.estate.EstateProvisioner import NUM_HOUSE_SLOTS
-
-
-def dropStaleObject(air, doId):
-    """Forget a persistent object an earlier visit left behind.
-
-    requestDelete only asks the State Server to delete the object
-    (direct/distributed/AstronInternalRepository.py:572-584); the AI keeps its
-    own reference until that delete comes back to handleObjExit (:301-313), and
-    a visit that ended uncleanly may leave it there for good.  Generating the
-    persistent doId again on top of it raises 'already in doId2do', so the
-    stale object goes first -- the same thing DistributedBattleBaseAI does
-    before it regenerates a pet proxy on its persistent doId
-    (toontown/battle/DistributedBattleBaseAI.py:1120-1127).
-    """
-    do = air.doId2do.get(doId)
-    if do is None:
-        return
-
-    do.requestDelete()
-    air.removeDOFromTables(do)
-    do.delete()
 
 
 class EstateWorld:
     """One account's estate while it is live: the zone it was generated in,
-    the objects generated there, and the avatars standing in it.  The estate
+    the objects activated there, and the avatars standing in it.  The estate
     and house doIds are persistent; the zone is not."""
 
     def __init__(self, accountId, ownerId, estateId, houseIds):
@@ -60,10 +37,14 @@ class EstateWorld:
 
 
 class EstateWorldOperation:
-    """Reads the persisted estate and house records, then generates them into
+    """Reads the persisted estate and house records, then activates them into
     a freshly allocated zone."""
 
     notify = DirectNotifyGlobal.directNotify.newCategory('EstateWorldOperation')
+
+    # how long to wait for the activated objects to come back from the DBSS
+    ACTIVATE_POLL = 0.2
+    ACTIVATE_TRIES = 50
 
     def __init__(self, manager, world):
         self.manager = manager
@@ -73,6 +54,8 @@ class EstateWorldOperation:
         self.houseFields = {}
         self.slots = []
         self.slot = 0
+        self.activating = []
+        self.waited = 0
 
     def start(self):
         self.air.dbInterface.queryObject(self.air.dbId, self.world.estateId,
@@ -108,20 +91,44 @@ class EstateWorldOperation:
     def __generate(self):
         world = self.world
         world.zoneId = self.air.allocateZone(owner=world.ownerId)
-        dropStaleObject(self.air, world.estateId)
-        estate = DistributedEstateAI(self.air)
-        estate.loadFromDb(self.estateFields)
-        estate.dbObject = 1
-        estate.generateWithRequiredAndId(world.estateId, self.air.districtId, world.zoneId)
-        world.estate = estate
+        # The estate and the houses are database objects, and a database
+        # object is brought into the world by activating it on the DBSS --
+        # the way a toon is loaded (otp/login/AstronLoginManagerUD.py:779,
+        # direct/distributed/AstronInternalRepository.py's sendActivate).
+        # generateWithRequiredAndId would ask the State Server for a second
+        # object on a doId the DBSS already owns; the AI gets its object
+        # either way, but nothing in the zone is ever sent to a client.
+        self.activating = [world.estateId]
+        self.activating.extend(world.houseIds[slot] for slot in sorted(self.houseFields))
+        for doId in self.activating:
+            self.air.sendActivate(doId, self.air.districtId, world.zoneId)
+
+        self.__waitForActivation()
+
+    def __waitForActivation(self, task=None):
+        # The activated objects arrive as ENTER_AI entries, which is the only
+        # thing that puts them in air.doId2do
+        # (direct/distributed/AstronInternalRepository.py:272-300).
+        missing = [doId for doId in self.activating if doId not in self.air.doId2do]
+        if missing:
+            self.waited += 1
+            if self.waited > self.ACTIVATE_TRIES:
+                self.notify.warning('Estate objects %s never activated!' % missing)
+                self.__finish()
+                return
+
+            taskMgr.doMethodLater(self.ACTIVATE_POLL, self.__waitForActivation,
+                                  'estate-activate-%s' % self.world.estateId)
+            return
+
+        self.__populate()
+
+    def __populate(self):
+        world = self.world
+        world.estate = self.air.doId2do[world.estateId]
         for slot in sorted(self.houseFields):
-            dropStaleObject(self.air, world.houseIds[slot])
-            house = DistributedHouseAI(self.air)
-            house.loadFromDb(self.houseFields[slot])
+            house = self.air.doId2do[world.houseIds[slot]]
             house.setHousePos(slot)
-            house.dbObject = 1
-            house.generateWithRequiredAndId(world.houseIds[slot], self.air.districtId,
-                                            world.zoneId)
             house.createInterior()
             house.createMailbox()
             house.d_setHouseReady()
