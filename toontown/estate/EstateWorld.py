@@ -113,6 +113,7 @@ class EstateWorldOperation:
             house.generateWithRequiredAndId(world.houseIds[slot], self.air.districtId,
                                             world.zoneId)
             house.createInterior()
+            house.createMailbox()
             house.d_setHouseReady()
             world.houses.append(house)
 
