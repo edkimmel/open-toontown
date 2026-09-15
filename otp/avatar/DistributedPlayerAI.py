@@ -116,6 +116,10 @@ class DistributedPlayerAI(DistributedAvatarAI.DistributedAvatarAI, PlayerBase.Pl
     def getAccessLevel(self):
         return self.accessLevel
 
+    def b_setFriendsList(self, friendsList):
+        self.setFriendsList(friendsList)
+        self.d_setFriendsList(friendsList)
+
     def d_setFriendsList(self, friendsList):
         self.sendUpdate('setFriendsList', [friendsList])
 
