@@ -2,8 +2,11 @@ from direct.directnotify import DirectNotifyGlobal
 from direct.distributed.ClockDelta import globalClockDelta
 from direct.task.Task import Task
 
+from toontown.catalog import CatalogItem
+from toontown.catalog import CatalogItemBlob
 from toontown.estate import PhoneGlobals
 from toontown.estate.DistributedFurnitureItemAI import DistributedFurnitureItemAI
+from toontown.toonbase import ToontownGlobals
 
 # same countdown the store clerk gives a shopper
 # (toontown/toon/NPCToons.py:61)
@@ -59,6 +62,57 @@ class DistributedPhoneAI(DistributedFurnitureItemAI):
         # (toontown/catalog/CatalogAtticItem.py:38)
         self.sendUpdateToAvatarId(avId, 'setLimits', [self.getNumHouseItems()])
         self.d_setMovie(PhoneGlobals.PHONE_MOVIE_PICKUP, avId)
+
+    def requestPurchaseMessage(self, context, blob, optional):
+        avId = self.air.getAvatarIdFromSender()
+        retcode = self.__validate(avId, blob)[2]
+        self.sendUpdateToAvatarId(avId, 'requestPurchaseResponse',
+                                  [context, retcode])
+
+    def validatePurchase(self, av, blob):
+        """Matches a client blob against what av was actually offered.
+
+        Returns (item, price, retcode).  item is the entry from the avatar's
+        own catalog, never the decoded blob, and price comes from that entry,
+        so a forged sale flag or price cannot travel with the request.
+        retcode is None when the purchase may go ahead.
+        """
+        item = CatalogItemBlob.decodeVerifiedItem(blob, store=CatalogItem.Customization)
+        if item is None:
+            return (None, None, ToontownGlobals.P_NotInCatalog)
+        offer, catalogType = self.__findOffer(av, item)
+        if offer is None:
+            return (None, None, ToontownGlobals.P_NotInCatalog)
+        if offer.notOfferedTo(av):
+            return (None, None, ToontownGlobals.P_NotInCatalog)
+        if offer.reachedPurchaseLimit(av):
+            return (None, None, ToontownGlobals.P_ReachedPurchaseLimit)
+        return (offer, offer.getPrice(catalogType), None)
+
+    def __findOffer(self, av, item):
+        # the shopper prices the monthly and weekly issues alike and only the
+        # back catalog differently (toontown/catalog/CatalogScreen.py:600-637)
+        catalogs = ((av.monthlyCatalog, CatalogItem.CatalogTypeWeekly),
+                    (av.weeklyCatalog, CatalogItem.CatalogTypeWeekly),
+                    (av.backCatalog, CatalogItem.CatalogTypeBackorder))
+        for catalog, catalogType in catalogs:
+            for offer in catalog:
+                if offer == item:
+                    return (offer, catalogType)
+        return (None, None)
+
+    def __validate(self, avId, blob):
+        if self.busy != avId:
+            self.air.writeServerEvent('suspicious', avId, 'DistributedPhoneAI.requestPurchaseMessage while not shopping')
+            return (None, None, ToontownGlobals.P_NotShopping)
+        av = self.air.doId2do.get(avId)
+        if av is None:
+            return (None, None, ToontownGlobals.P_NotShopping)
+        item, price, retcode = self.validatePurchase(av, blob)
+        if retcode is not None:
+            return (item, price, retcode)
+        # nothing grants the item yet
+        return (item, price, ToontownGlobals.P_NoPurchaseMethod)
 
     def avatarExit(self):
         avId = self.air.getAvatarIdFromSender()
