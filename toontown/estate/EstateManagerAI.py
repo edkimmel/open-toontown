@@ -66,10 +66,12 @@ class EstateManagerAI(DistributedObjectAI):
         if pending is not None:
             if senderId not in pending:
                 pending.append(senderId)
+                self.__watchAvatar(senderId)
 
             return
 
         self.pendingWorlds[accountId] = [senderId]
+        self.__watchAvatar(senderId)
         self.provisioner.provision(accountId, lambda estateId, houseIds:
                                    self.__handleEstateProvisioned(accountId, estateId, houseIds))
 
@@ -95,8 +97,34 @@ class EstateManagerAI(DistributedObjectAI):
         for avId in waiting:
             self.__admit(world, avId)
 
+        if not world.occupants:
+            # Everybody who asked for it left again while it was opening.
+            self.__closeWorld(world)
+
+    def __watchAvatar(self, avId):
+        # toontown/building/DistributedBoardingPartyAI.py:70-71 watches an
+        # avatar the same way: the delete event for a disconnect, the logical
+        # zone change for a walk-out.
+        self.acceptOnce(self.air.getAvatarExitEvent(avId), self.removeFromEstate,
+                        extraArgs=[avId])
+        self.accept(self.staticGetLogicalZoneChangeEvent(avId),
+                    self.__handleZoneChange, extraArgs=[avId])
+
+    def __ignoreAvatar(self, avId):
+        self.ignore(self.air.getAvatarExitEvent(avId))
+        self.ignore(self.staticGetLogicalZoneChangeEvent(avId))
+
+    def __handleZoneChange(self, avId, zoneId, oldZoneId):
+        world = self.__worldForAvatar(avId)
+        if world is not None and zoneId in world.getZones():
+            # The estate zone and the house interiors are all one visit.
+            return
+
+        self.removeFromEstate(avId)
+
     def __admit(self, world, avId):
         world.addOccupant(avId)
+        self.__watchAvatar(avId)
         self.estate[avId] = world.estate
         self.owner2estateZone[avId] = world.zoneId
         self.sendUpdateToAvatarId(avId, 'setAvHouseId', [avId, world.houseIds])
@@ -108,7 +136,12 @@ class EstateManagerAI(DistributedObjectAI):
         self.removeFromEstate(senderId)
 
     def removeFromEstate(self, avId):
+        self.__ignoreAvatar(avId)
         self.estate.pop(avId, None)
+        for waiting in self.pendingWorlds.values():
+            if avId in waiting:
+                waiting.remove(avId)
+
         zoneId = self.owner2estateZone.pop(avId, None)
         if zoneId is None:
             return
@@ -124,6 +157,12 @@ class EstateManagerAI(DistributedObjectAI):
         self.__closeWorld(world)
 
     def __closeWorld(self, world):
+        for avId in list(world.occupants):
+            self.__ignoreAvatar(avId)
+            self.estate.pop(avId, None)
+            self.owner2estateZone.pop(avId, None)
+            world.removeOccupant(avId)
+
         self.worlds.pop(world.accountId, None)
         self.zoneId2world.pop(world.zoneId, None)
         self.zoneId2owner.pop(world.zoneId, None)
