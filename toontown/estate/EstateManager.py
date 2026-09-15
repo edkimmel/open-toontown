@@ -56,7 +56,7 @@ class EstateManager(DistributedObject.DistributedObject):
                 houseId = houseIds[av.position]
                 ownerAv = base.cr.doId2do.get(avId)
                 if ownerAv:
-                    ownerAv.b_setHouseId(houseId)
+                    ownerAv.setHouseId(houseId)
                 return
 
     def sendAvToPlayground(self, avId, retCode):
