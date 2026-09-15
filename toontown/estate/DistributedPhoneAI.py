@@ -2,6 +2,7 @@ from direct.directnotify import DirectNotifyGlobal
 from direct.distributed.ClockDelta import globalClockDelta
 from direct.task.Task import Task
 
+from toontown.catalog import CatalogEmoteItem
 from toontown.catalog import CatalogItem
 from toontown.catalog import CatalogItemBlob
 from toontown.estate import PhoneGlobals
@@ -20,6 +21,7 @@ class DistributedPhoneAI(DistributedFurnitureItemAI):
         DistributedFurnitureItemAI.__init__(self, air, furnitureMgr, item)
         self.initialScale = (1.0, 1.0, 1.0)
         self.busy = 0
+        self.lastPurchase = None
 
     def getInitialScale(self):
         return self.initialScale
@@ -31,6 +33,7 @@ class DistributedPhoneAI(DistributedFurnitureItemAI):
         self.__stopTimeout()
         self.ignoreAll()
         self.busy = 0
+        self.lastPurchase = None
         DistributedFurnitureItemAI.delete(self)
 
     def isBusy(self):
@@ -53,6 +56,7 @@ class DistributedPhoneAI(DistributedFurnitureItemAI):
             self.freeAvatar(avId)
             return
         self.busy = avId
+        self.lastPurchase = None
         self.acceptOnce(self.air.getAvatarExitEvent(avId),
                         self.__handleUnexpectedExit, extraArgs=[avId])
         self.doMethodLater(PHONE_COUNTDOWN_TIME, self.__handleTimeout,
@@ -65,7 +69,7 @@ class DistributedPhoneAI(DistributedFurnitureItemAI):
 
     def requestPurchaseMessage(self, context, blob, optional):
         avId = self.air.getAvatarIdFromSender()
-        retcode = self.__validate(avId, blob)[2]
+        retcode = self.__purchase(avId, context, bytes(blob), optional)
         self.sendUpdateToAvatarId(avId, 'requestPurchaseResponse',
                                   [context, retcode])
 
@@ -101,18 +105,60 @@ class DistributedPhoneAI(DistributedFurnitureItemAI):
                     return (offer, catalogType)
         return (None, None)
 
-    def __validate(self, avId, blob):
+    def __purchase(self, avId, context, blob, optional):
         if self.busy != avId:
             self.air.writeServerEvent('suspicious', avId, 'DistributedPhoneAI.requestPurchaseMessage while not shopping')
-            return (None, None, ToontownGlobals.P_NotShopping)
+            return ToontownGlobals.P_NotShopping
         av = self.air.doId2do.get(avId)
         if av is None:
-            return (None, None, ToontownGlobals.P_NotShopping)
+            return ToontownGlobals.P_NotShopping
+        if self.lastPurchase is not None:
+            lastRequest, lastRetcode = self.lastPurchase
+            if lastRequest == (context, blob):
+                # a resend of the request already answered: the shopper gets
+                # the same answer and the item is granted and charged once
+                return lastRetcode
+            if lastRequest[0] == context:
+                self.air.writeServerEvent('suspicious', avId, 'DistributedPhoneAI.requestPurchaseMessage reused context %s' % context)
+                return ToontownGlobals.P_NotShopping
+        retcode = self.__grant(av, blob, optional)
+        self.lastPurchase = ((context, blob), retcode)
+        return retcode
+
+    def __grant(self, av, blob, optional):
         item, price, retcode = self.validatePurchase(av, blob)
         if retcode is not None:
-            return (item, price, retcode)
-        # nothing grants the item yet
-        return (item, price, ToontownGlobals.P_NoPurchaseMethod)
+            return retcode
+        if item.getDeliveryTime():
+            # only items that arrive at once are handled here
+            # (toontown/catalog/CatalogItem.py:155-156)
+            return ToontownGlobals.P_NoPurchaseMethod
+        retcode = self.__checkIndex(av, item)
+        if retcode is not None:
+            return retcode
+        # the funds are checked before anything is granted, so a shopper who
+        # cannot afford the item is left exactly as they were
+        if av.getTotalMoney() < price:
+            return ToontownGlobals.P_NotEnoughMoney
+        retcode = item.recordPurchase(av, optional)
+        if retcode != ToontownGlobals.P_ItemAvailable:
+            return retcode
+        # charge last: a failure here costs the shop, not the shopper
+        if not av.takeMoney(price):
+            self.notify.warning('could not charge %s %s for %s' % (av.doId, price, item))
+        return retcode
+
+    def __checkIndex(self, av, item):
+        """Rejects an out-of-range emote before the grant writes past the end.
+
+        CatalogEmoteItem.recordPurchase tests emoteIndex against
+        len(avatar.emoteAccess) with >, so an index equal to the length
+        reaches the assignment and raises IndexError.
+        """
+        if isinstance(item, CatalogEmoteItem.CatalogEmoteItem):
+            if not 0 <= item.emoteIndex < len(av.emoteAccess):
+                return ToontownGlobals.P_InvalidIndex
+        return None
 
     def avatarExit(self):
         avId = self.air.getAvatarIdFromSender()
@@ -144,6 +190,7 @@ class DistributedPhoneAI(DistributedFurnitureItemAI):
         self.__stopTimeout()
         self.ignore(self.air.getAvatarExitEvent(avId))
         self.busy = 0
+        self.lastPurchase = None
         self.d_setMovie(mode, avId)
         if avId in self.air.doId2do:
             self.freeAvatar(avId)
