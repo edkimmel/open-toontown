@@ -304,6 +304,52 @@ class Inventory(MagicWord):
             toon.d_setInventory(toon.inventory.makeNetString())
             return ("Zeroing inventory for " + toon.getName() + ".")
 
+class GagExp(MagicWord):
+    # Sets exact experience on one gag track, rather than adding to it.
+    aliases = ["trackexp"]
+    desc = "Sets a Toon's experience on a single gag track."
+    execLocation = MagicWordConfig.EXEC_LOC_SERVER
+    arguments = [("track", str, True), ("value", str, True)]
+
+    def handleWord(self, invoker, avId, toon, *args):
+        from toontown.toonbase import ToontownBattleGlobals
+
+        trackArg, valueArg = args[0], args[1]
+
+        track = None
+        if trackArg.lstrip('-').isdigit():
+            track = int(trackArg)
+        else:
+            trackNames = [t.replace('-', '').lower() for t in ToontownBattleGlobals.Tracks]
+            key = trackArg.replace('-', '').lower()
+            if key in trackNames:
+                track = trackNames.index(key)
+
+        if track is None or track < 0 or track > ToontownBattleGlobals.MAX_TRACK_INDEX:
+            return "Invalid track. Use an index 0-6 or a track name."
+
+        levels = ToontownBattleGlobals.Levels[track]
+        uberLevel = ToontownBattleGlobals.UBER_GAG_LEVEL_INDEX
+
+        lowerValue = valueArg.lower()
+        if lowerValue == "next":
+            # One point below the next level's threshold crosses it on the next gag use.
+            level = toon.experience.getExpLevel(track)
+            value = levels[min(level + 1, uberLevel)] - 1
+        elif lowerValue == "ubernext":
+            value = levels[uberLevel] - 1
+        else:
+            try:
+                value = int(valueArg)
+            except ValueError:
+                return "Value must be an integer, \"next\", or \"ubernext\"."
+
+        value = max(0, min(value, ToontownBattleGlobals.MaxSkill))
+
+        toon.experience.setExp(track, value)
+        toon.d_setExperience(toon.experience.makeNetString())
+        return f"Set {ToontownBattleGlobals.Tracks[track]} experience to {value} for {toon.getName()}."
+
 class SetPinkSlips(MagicWord):
     # this command gives the target toon the specified amount of pink slips
     # default is 255
