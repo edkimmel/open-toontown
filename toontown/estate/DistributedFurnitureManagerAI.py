@@ -5,6 +5,7 @@ from toontown.catalog import CatalogFurnitureItem
 from toontown.catalog import CatalogItem
 from toontown.catalog import CatalogItemList
 from toontown.catalog import CatalogSurfaceItem
+from toontown.catalog import CatalogWindowItem
 from toontown.estate.DistributedBankAI import DistributedBankAI
 from toontown.estate.DistributedClosetAI import DistributedClosetAI
 from toontown.estate.DistributedFurnitureItemAI import DistributedFurnitureItemAI
@@ -260,9 +261,18 @@ class DistributedFurnitureManagerAI(DistributedObjectAI):
             if index < len(deleted) and deleted[index] == offered:
                 removed = deleted.pop(index)
                 self.b_setDeletedItems(deleted.getBlob())
-                attic = self.house.getAtticItemList()
-                attic.append(removed)
-                self.b_setAtticItems(attic.getBlob())
+                if isinstance(removed, CatalogSurfaceItem.CatalogSurfaceItem):
+                    attic = self.house.getAtticWallpaperList()
+                    attic.append(removed)
+                    self.b_setAtticWallpaper(attic.getBlob())
+                elif isinstance(removed, CatalogWindowItem.CatalogWindowItem):
+                    attic = self.house.getAtticWindowList()
+                    attic.append(removed)
+                    self.b_setAtticWindows(attic.getBlob())
+                else:
+                    attic = self.house.getAtticItemList()
+                    attic.append(removed)
+                    self.b_setAtticItems(attic.getBlob())
                 retcode = 0
         self.sendUpdateToAvatarId(avId, 'recoverDeletedItemResponse', [retcode, context])
 
