@@ -309,6 +309,20 @@ class DistributedHouseAI(DistributedObjectAI):
         # (DistributedTarget.py:95-104)
         self.target.d_setState(1, 0, 0)
 
+    def destroyCannon(self):
+        """Tear down just this house's cannon/target pair -- what a rental's
+        expiry needs (DistributedEstateAI._rentalTeardown), as opposed to
+        destroy()'s whole-house teardown.  Boots any occupant out through
+        the cannon's own FORCE_EXIT movie path first, so requestDelete never
+        yanks the ride out from under whoever is in it."""
+        if self.cannon is not None:
+            self.cannon.forceExit()
+            self.cannon.requestDelete()
+            self.cannon = None
+        if self.target is not None:
+            self.target.requestDelete()
+            self.target = None
+
     def createGarden(self, estateAI):
         """Generate this house's flower boxes, empty plot hard points, and
         any already-planted hard point's grown object, indexed by
@@ -439,13 +453,12 @@ class DistributedHouseAI(DistributedObjectAI):
         self.gardenBoxes = []
         self.gardenPlots = []
         self.gardenPlants = []
-        for distObj in (self.cannon, self.target, self.mailbox, self.insideDoor,
+        self.destroyCannon()
+        for distObj in (self.mailbox, self.insideDoor,
                         self.door, self.interior):
             if distObj is not None:
                 distObj.requestDelete()
 
-        self.cannon = None
-        self.target = None
         self.mailbox = None
         self.insideDoor = None
         self.door = None

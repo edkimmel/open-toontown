@@ -154,6 +154,37 @@ class DistributedEstateAI(DistributedObjectAI):
         self.b_setRentalType(rentalType)
         self.b_setRentalTimeStamp(base + durationMinutes * 60)
         self.__armRentalExpiry()
+        if rentalType == ToontownGlobals.RentalCannon:
+            self.__enableCannons()
+
+    def forceExpireRental(self):
+        """Dev hook: force the clock on the current rental to now, so it
+        expires on the next __armRentalExpiry pass instead of waiting out
+        the real deadline (~rental expire, MagicWordIndex.py)."""
+        if self.rentalType == 0:
+            return
+        self.b_setRentalTimeStamp(int(time.time()))
+        self.__armRentalExpiry()
+
+    def __findWorld(self):
+        """This estate's own EstateWorld, found through the estate manager's
+        `worlds` map the way MagicWordIndex._residentHouse does -- the
+        estate has no back-reference of its own to the houses around it."""
+        from toontown.estate.EstateManagerAI import EstateManagerAI
+        for do in self.air.doId2do.values():
+            if isinstance(do, EstateManagerAI):
+                for world in do.worlds.values():
+                    if world.estate is self:
+                        return world
+        return None
+
+    def __enableCannons(self):
+        world = self.__findWorld()
+        if world is None:
+            return
+        for house in world.houses:
+            house.setCannonEnabled(1)
+            house.createCannon(self)
 
     def __rentalTaskName(self):
         return 'estate-rental-expiry-%s' % self.doId
@@ -186,9 +217,17 @@ class DistributedEstateAI(DistributedObjectAI):
         self._rentalTeardown(rentalType)
 
     def _rentalTeardown(self, rentalType):
-        # Filled in when the cannon/target DO lifecycle lands: force any
-        # occupant out and requestDelete the pair for a cannon rental.
-        pass
+        # RentalGameTable is stored and expired correctly but generates
+        # nothing (no game-table DO exists), so there is nothing to tear
+        # down for it here.
+        if rentalType != ToontownGlobals.RentalCannon:
+            return
+        world = self.__findWorld()
+        if world is None:
+            return
+        for house in world.houses:
+            house.setCannonEnabled(0)
+            house.destroyCannon()
 
     def _setSlotToonId(self, slot, avId):
         self.slotToonIds[slot] = avId

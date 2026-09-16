@@ -814,7 +814,9 @@ def _residentHouse(air, toon):
 
 class Cannon(MagicWord):
     desc = ("Turns on the invoker's pinball cannon and drops it, with the target it "
-            "shoots at, into the estate the invoker is standing in.")
+            "shoots at, into the estate the invoker is standing in.  This only enables "
+            "one house's cannon for the current visit; see ~rental for the real "
+            "estate-wide rental path (every house's cannon, persisted, and it expires).")
     execLocation = MagicWordConfig.EXEC_LOC_SERVER
     accessLevel = 'ADMIN'
 
@@ -834,6 +836,48 @@ class Cannon(MagicWord):
         if house.cannon is None:
             return "{}'s cannon could not be generated.".format(toon.getName())
         return "Dropped a cannon in {}'s estate.".format(toon.getName())
+
+
+class Rental(MagicWord):
+    desc = ("Rents the invoker's estate cannon or game table for a number of hours "
+            "(default 1) -- the same rentItem CatalogRentalItem.recordPurchase calls, "
+            "not a parallel path.  'gametable' is stored and expires correctly but "
+            "generates no DO (no game-table object exists yet).  '~rental expire' forces "
+            "the current rental's clock to now instead of waiting out the real deadline.")
+    execLocation = MagicWordConfig.EXEC_LOC_SERVER
+    accessLevel = 'ADMIN'
+    arguments = [("command", str, False, ''), ("hours", str, False, '')]
+
+    def handleWord(self, invoker, avId, toon, *args):
+        from toontown.toonbase import ToontownGlobals
+
+        command = (args[0] if len(args) > 0 else '') or ''
+        command = str(command).strip().lower()
+        hoursArg = (args[1] if len(args) > 1 else '') or ''
+
+        if not toon.getHouseId():
+            return "{} has no house.".format(toon.getName())
+
+        house, estateAI = _residentHouse(self.air, toon)
+        if house is None:
+            return "{} is not standing in their own live estate.".format(toon.getName())
+
+        if command == 'expire':
+            estateAI.forceExpireRental()
+            return "Expired {}'s estate rental.".format(toon.getName())
+
+        rentalTypes = {'cannon': ToontownGlobals.RentalCannon,
+                      'gametable': ToontownGlobals.RentalGameTable}
+        if command not in rentalTypes:
+            return "Specify a rental type: cannon or gametable (or 'expire')."
+
+        try:
+            hours = float(hoursArg) if hoursArg else 1.0
+        except ValueError:
+            return "Specify a number of hours."
+
+        estateAI.rentItem(rentalTypes[command], int(hours * 60))
+        return "Rented {} a {} for {} hour(s).".format(toon.getName(), command, hours)
 
 
 class Garden(MagicWord):

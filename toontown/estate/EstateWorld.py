@@ -141,14 +141,25 @@ class EstateWorldOperation:
         self.__populate()
 
     def __populate(self):
+        from toontown.toonbase import ToontownGlobals
+
         world = self.world
         world.estate = self.air.doId2do[world.estateId]
+        # cannonEnabled has no db field of its own (etc/toon.dc:1219 is
+        # `required` only), so a re-activated world has to re-derive it from
+        # the estate's own db-backed rental fields -- a rental already
+        # expired by the time announceGenerate's own catch-up ran, so a
+        # rentalType still showing RentalCannon here means the rental is
+        # live and the pair regenerates; anything else means no cannon.
+        liveCannonRental = world.estate.getRentalType() == ToontownGlobals.RentalCannon
         for slot in sorted(self.houseFields):
             house = self.air.doId2do[world.houseIds[slot]]
             house.setHousePos(slot)
             house.createInterior()
             house.createMailbox()
             house.createGarden(world.estate)
+            if liveCannonRental:
+                house.setCannonEnabled(1)
             house.createCannon(world.estate)
             world.houses.append(house)
 

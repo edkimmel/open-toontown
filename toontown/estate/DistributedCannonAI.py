@@ -115,6 +115,15 @@ class DistributedCannonAI(DistributedObjectAI.DistributedObjectAI):
             return
         self.__release(CannonGlobals.CANNON_MOVIE_LANDED, 0)
 
+    def forceExit(self):
+        """Boot whoever is riding, if anyone -- what a rental's expiry needs
+        before requestDelete pulls the cannon out from under an occupant
+        (DistributedEstateAI._rentalTeardown).  Same FORCE_EXIT/CLEAR pair a
+        timeout or a disconnect already sends; a no-op if the cannon is
+        empty."""
+        if self.avId:
+            self.__doExit()
+
     def setActive(self, active):
         if active < 0 or active > 1:
             self.air.writeServerEvent('suspicious', active, 'DistributedCannon.setActive value should be 0-1 range')
