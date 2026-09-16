@@ -77,11 +77,39 @@ class DistributedLawnDecorAI(DistributedObjectAI):
         self.d_setMovie(GardenGlobals.MOVIE_CLEAR, avId)
 
     def removeItem(self):
+        # Like `waterPlant` (DistributedPlantBaseAI, B5), `removeItem` has no
+        # `plotEntered` session to check either -- every subclass overrides
+        # `handleEnterPlot` and none of them call the base version that sends
+        # `plotEntered` (DistributedPlantBase.py:88-89, DistributedStatuary.
+        # py:87-93, DistributedGardenPlot.py:85-88, DistributedGardenBox.py:
+        # 50-51), so `handleRemove`/`doPicking` send `removeItem` directly,
+        # gated only by ownership (DistributedLawnDecor.canBePicked,
+        # DistributedLawnDecor.py:224-231).
         avId = self.air.getAvatarIdFromSender()
-        if avId != self.getOwnerAvId() or self.busy != avId:
+        if avId != self.getOwnerAvId():
             self.notify.debug('removeItem refused for %s' % avId)
             return
         self.d_setMovie(GardenGlobals.MOVIE_REMOVE, avId)
+        self._removeFromGarden()
+
+    def _removeFromGarden(self):
+        """The generic (no-reward) half of removal: delete this grown object
+        and restore an empty `DistributedGardenPlotAI` at the same hard
+        point, dropping the `lawnItem` out of the owner's estate slot list --
+        the mirror image of `DistributedGardenPlotAI._replaceWithGrownObject`
+        (B4).  `DistributedFlowerAI.removeItem` calls this too, after
+        crediting the pick."""
+        from toontown.estate.DistributedGardenPlotAI import DistributedGardenPlotAI
+        plot = DistributedGardenPlotAI(self.air, self.estateAI)
+        plot.setPlot(self.plot)
+        plot.setPosition(*self.position)
+        plot.setHeading(self.heading)
+        plot.setOwnerIndex(self.ownerIndex)
+        plot.generateWithRequired(self.zoneId)
+        items = [item for item in self.estateAI.slotItems[self.ownerIndex]
+                 if item[1] != self.plot]
+        self.estateAI.b_setSlotItems(self.ownerIndex, items)
+        self.requestDelete()
 
     def movieDone(self):
         avId = self.air.getAvatarIdFromSender()
