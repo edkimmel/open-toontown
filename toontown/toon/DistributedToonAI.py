@@ -228,6 +228,10 @@ class DistributedToonAI(DistributedPlayerAI.DistributedPlayerAI, DistributedSmoo
             # logged out.  The client only asks for a catalog when it has
             # never had one.
             self.air.catalogManager.deliverCatalogFor(self)
+            # The delivery wake-up only lives in memory; an order that was
+            # already due while the avatar was logged out needs its own
+            # wake-up rearmed here rather than waiting for the next purchase.
+            self.rearmDeliverySchedule()
         if hasattr(self, 'gameAccess') and self.gameAccess != 2:
             if self.hat[0] != 0:
                 self.replaceItemInAccessoriesList(ToonDNA.HAT, 0, 0, 0, self.hat[0], self.hat[1], self.hat[2])
@@ -2254,6 +2258,13 @@ class DistributedToonAI(DistributedPlayerAI.DistributedPlayerAI, DistributedSmoo
             self.onGiftOrder = CatalogItemList.CatalogItemList(onGiftOrder, store=CatalogItem.Customization | CatalogItem.DeliveryDate)
         if doUpdateLater:
             self.scheduleNextDelivery()
+
+    def rearmDeliverySchedule(self):
+        """Arms one wake-up from whatever onOrder/onGiftOrder came down with
+        the avatar, so a deadline that already passed while it was offline
+        delivers on the next fire instead of sitting until another purchase
+        touches the schedule."""
+        self.scheduleNextDelivery()
 
     def scheduleNextDelivery(self, minDelay = DeliveryMinDelay):
         """Keeps one pending wake-up for both queues, at the earliest deadline.
