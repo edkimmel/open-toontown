@@ -46,6 +46,7 @@ class DistributedEstate(DistributedObject.DistributedObject):
         self.initCamera()
         self.plotTable = []
         self.idList = []
+        self.slotItems = [[], [], [], [], [], []]
         base.estate = self
         self.flowerGuiDoneEvent = 'flowerGuiDone'
         return
@@ -356,6 +357,42 @@ class DistributedEstate(DistributedObject.DistributedObject):
 
     def setIdList(self, idList):
         self.idList = idList
+
+    def getSlot0Items(self):
+        return self.slotItems[0]
+
+    def setSlot0Items(self, items):
+        self.slotItems[0] = items
+
+    def getSlot1Items(self):
+        return self.slotItems[1]
+
+    def setSlot1Items(self, items):
+        self.slotItems[1] = items
+
+    def getSlot2Items(self):
+        return self.slotItems[2]
+
+    def setSlot2Items(self, items):
+        self.slotItems[2] = items
+
+    def getSlot3Items(self):
+        return self.slotItems[3]
+
+    def setSlot3Items(self, items):
+        self.slotItems[3] = items
+
+    def getSlot4Items(self):
+        return self.slotItems[4]
+
+    def setSlot4Items(self, items):
+        self.slotItems[4] = items
+
+    def getSlot5Items(self):
+        return self.slotItems[5]
+
+    def setSlot5Items(self, items):
+        self.slotItems[5] = items
 
     def loadFlowerSellBox(self):
         self.flowerSellBox = loader.loadModel('phase_5.5/models/estate/wheelbarrel.bam')
