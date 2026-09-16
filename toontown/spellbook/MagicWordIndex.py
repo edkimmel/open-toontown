@@ -447,7 +447,7 @@ class Furnish(MagicWord):
     def handleWord(self, invoker, avId, toon, *args):
         from toontown.catalog import CatalogItem
         from toontown.catalog.CatalogItemList import CatalogItemList
-        from toontown.catalog.CatalogFurnitureItem import CatalogFurnitureItem
+        from toontown.catalog.CatalogFurnitureItem import CatalogFurnitureItem, FLCloset, FLTrunk, FLBank
 
         houseId = toon.getHouseId()
         if not houseId:
@@ -462,16 +462,38 @@ class Furnish(MagicWord):
         trunk = CatalogFurnitureItem(trunkType, posHpr=(-4, 0, 0, -90, 0, 0))
         bank = CatalogFurnitureItem(bankType, posHpr=(0, 4, 0, 0, 0, 0))
         atticItems = [CatalogFurnitureItem(100) for i in range(3)]
+        candidates = ((closet, FLCloset, 'closet'), (trunk, FLTrunk, 'trunk'), (bank, FLBank, 'bank'))
 
         house = self.air.doId2do.get(houseId)
+        addedNames = []
+        skippedNames = []
+        addedAtticCount = len(atticItems)
+        skippedAtticCount = 0
         if house is not None:
             interior = house.getInteriorItemList()
+            existingFlags = 0
+            for existingItem in interior:
+                existingFlags |= existingItem.getFlags()
+
             startIndex = len(interior)
-            for item in (closet, trunk, bank):
-                interior.append(item)
-            house.setInteriorItemList(interior)
-            for item in atticItems:
+            toAdd = []
+            for item, flag, name in candidates:
+                if existingFlags & flag:
+                    skippedNames.append(name)
+                else:
+                    interior.append(item)
+                    toAdd.append(item)
+                    addedNames.append(name)
+            if toAdd:
+                house.setInteriorItemList(interior)
+
+            existingAttic = house.getAtticItemList()
+            newAtticItems = [item for item in atticItems
+                             if not any(item.compareTo(existing) == 0 for existing in existingAttic)]
+            for item in newAtticItems:
                 house.addAtticItem(item)
+            addedAtticCount = len(newAtticItems)
+            skippedAtticCount = len(atticItems) - addedAtticCount
 
             # createFurniture (DistributedFurnitureManagerAI.py:412-426) only
             # runs once, when the house's interior is first generated -- a
@@ -480,7 +502,7 @@ class Furnish(MagicWord):
             # blob above now has them in it.
             furnitureMgr = getattr(house, 'furnitureMgr', None)
             if furnitureMgr is not None:
-                for offset, item in enumerate((closet, trunk, bank)):
+                for offset, item in enumerate(toAdd):
                     furnitureMgr.generateInteriorItem(item, startIndex + offset)
         else:
             # The house isn't generated on this AI (the target isn't inside
@@ -488,7 +510,9 @@ class Furnish(MagicWord):
             # -- write the two blobs straight to its database row instead,
             # the same field-write path AstronLoginManagerUD.py:253 uses for
             # an object that isn't resident either. This replaces whatever
-            # was already in those two blobs rather than merging into it.
+            # was already in those two blobs rather than merging into it, so
+            # there is nothing to compare against for skipping here.
+            addedNames = [name for _, _, name in candidates]
             interior = CatalogItemList(store=CatalogItem.Customization | CatalogItem.Location)
             for item in (closet, trunk, bank):
                 interior.append(item)
@@ -508,8 +532,16 @@ class Furnish(MagicWord):
         toon.b_setMaxAccessories(trunk.getMaxAccessories())
         toon.b_setMaxBankMoney(bank.getMaxBankMoney())
 
-        return "Furnished {}'s house with a closet, a trunk, a bank and {} attic item(s).".format(
-            toon.getName(), len(atticItems))
+        message = "Furnished {}'s house".format(toon.getName())
+        if addedNames:
+            message += " with a {}".format(', a '.join(addedNames))
+        message += ", plus {} attic item(s)".format(addedAtticCount)
+        if skippedNames or skippedAtticCount:
+            skipParts = list(skippedNames)
+            if skippedAtticCount:
+                skipParts.append("{} attic item(s)".format(skippedAtticCount))
+            message += " (already had {}, skipped)".format(', '.join(skipParts))
+        return message + "."
 
 class Disguise(MagicWord):
     aliases = ["cogsuit"]
