@@ -17,6 +17,14 @@ from toontown.distributed.DelayDeletable import DelayDeletable
 import random
 if __dev__:
     import pdb
+
+# MsgTypes only assigns this under the pre-Astron branch (astron-support
+# false); with astron-support on, direct.distributed.MsgTypes never puts it
+# in globals, so pull in the same value (81, next to CLIENT_GET_PET_DETAILS_RESP
+# at 82) here.
+if 'CLIENT_GET_PET_DETAILS' not in globals():
+    CLIENT_GET_PET_DETAILS = 81
+
 BeanColors = (VBase4(1.0, 0.2, 0.2, 1.0),
  VBase4(0.2, 1.0, 0.2, 1.0),
  VBase4(0.2, 0.2, 1.0, 1.0),

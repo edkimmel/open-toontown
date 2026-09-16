@@ -1,4 +1,5 @@
 from panda3d.core import *
+from panda3d.otp import *
 from direct.directnotify import DirectNotifyGlobal
 from direct.interval.IntervalGlobal import *
 from direct.fsm.ClassicFSM import *
