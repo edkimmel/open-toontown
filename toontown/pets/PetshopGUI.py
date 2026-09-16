@@ -17,7 +17,6 @@ from toontown.pets import PetDetail
 from toontown.pets import PetTraits
 from toontown.pets import PetNameGenerator
 from toontown.hood import ZoneUtil
-import string
 import random
 Dialog_MainMenu = 0
 Dialog_AdoptPet = 1
@@ -358,7 +357,7 @@ class PetshopGUI(DirectObject):
                     descList.append('\t%s' % trait)
 
                 descList.append(TTLocalizer.PetshopDescCost % cost)
-                self.petDesc.append(string.join(descList, '\n'))
+                self.petDesc.append('\n'.join(descList))
                 self.petCost.append(cost)
 
         def destroy(self):
