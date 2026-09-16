@@ -1513,9 +1513,6 @@ class Fireworks(MagicWord):
     execLocation = MagicWordConfig.EXEC_LOC_SERVER
     arguments = [("name", str, False, "newyear"), ("hood", str, False, "")]
 
-    # List of firework shows currently in progress
-    fireworkShows = {}
-
     def handleWord(self, invoker, avId, toon, *args):
         name = args[0]
         hood = args[1]
@@ -1554,24 +1551,14 @@ class Fireworks(MagicWord):
         else:
             return "Missing hood argument."
         
-        # Generate our firework shows
-        from toontown.effects.DistributedFireworkShowAI import DistributedFireworkShowAI
+        # Start our firework shows.  The manager owns the registry and is
+        # what the shows report back to when they are done.
         count = 0
         for zone in zones:
-            if zone not in self.fireworkShows:
-                show = DistributedFireworkShowAI(self.air, self)
-                show.generateWithRequired(zone)
-                self.fireworkShows[zone] = show
-                show.d_startShow(showId, zoneToStyleDict.get(zone, 0))
+            if self.air.fireworkMgr.startShow(zone, showId, zoneToStyleDict.get(zone, 0)):
                 count += 1
-        
+
         return f"Started firework {'show' if count == 1 else 'shows'} in {count} {'zone' if count == 1 else 'zones'}!"
-    
-    def stopShow(self, zoneId):
-        if zoneId in self.fireworkShows:
-            show = self.fireworkShows[zoneId]
-            show.requestDelete()
-            del self.fireworkShows[zoneId]
 
 class SetSpeedChatStyle(MagicWord):
     # BUG FIX (dev-stack crash, coordinator report): the first version of
