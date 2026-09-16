@@ -10,6 +10,7 @@ class DistributedFurnitureManager(DistributedObject.DistributedObject):
         DistributedObject.DistributedObject.__init__(self, cr)
         self.director = 0
         self.dfitems = []
+        self.moveItemFromAtticRequest = None
 
     def generate(self):
         DistributedObject.DistributedObject.generate(self)
@@ -17,6 +18,9 @@ class DistributedFurnitureManager(DistributedObject.DistributedObject):
 
     def disable(self):
         self.ignoreAll()
+        if self.moveItemFromAtticRequest is not None:
+            self.cr.relatedObjectMgr.abortRequest(self.moveItemFromAtticRequest)
+            self.moveItemFromAtticRequest = None
         if self.cr.furnitureManager == self:
             self.cr.furnitureManager = None
         base.localAvatar.setFurnitureDirector(0, self)
@@ -138,12 +142,24 @@ class DistributedFurnitureManager(DistributedObject.DistributedObject):
         self.doCallbackContext(context, [retcode])
 
     def moveItemFromAtticResponse(self, retcode, objectId, context):
-        if retcode >= 0:
-            dfitem = base.cr.doId2do[objectId]
-        else:
-            dfitem = None
-        self.doCallbackContext(context, [retcode, dfitem])
+        if retcode < 0:
+            self.doCallbackContext(context, [retcode, None])
+            return
+        dfitem = self.cr.doId2do.get(objectId)
+        if dfitem is not None:
+            self.doCallbackContext(context, [retcode, dfitem])
+            return
+        # the generate (through the state server) and this direct response
+        # are not guaranteed to arrive in send order, so the object may
+        # not be in doId2do yet -- wait for it instead of assuming it.
+        self.moveItemFromAtticRequest = self.cr.relatedObjectMgr.requestObjects(
+            [objectId], allCallback=lambda dfitemList, context=context:
+                self.__gotMoveItemFromAttic(retcode, context, dfitemList))
         return
+
+    def __gotMoveItemFromAttic(self, retcode, context, dfitemList):
+        self.moveItemFromAtticRequest = None
+        self.doCallbackContext(context, [retcode, dfitemList[0]])
 
     def deleteItemFromAtticResponse(self, retcode, context):
         self.doCallbackContext(context, [retcode])
