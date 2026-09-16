@@ -25,6 +25,9 @@ class DistributedFishingSpotAI(DistributedObjectAI):
         self.pond = None
         self.avId = 0
         self.castInFlight = False
+        # swappable so a test can pin the outcome roll; None means
+        # FishManagerAI.getCatch falls back to the real random module
+        self.rNumGen = None
 
     def generate(self):
         DistributedObjectAI.generate(self)
@@ -127,7 +130,16 @@ class DistributedFishingSpotAI(DistributedObjectAI):
 
         The outcome comes from air.fishManager.getCatch(av, area), which
         pays out any jellybeans itself, so nothing here touches money."""
-        pass
+        av = self.air.doId2do.get(avId)
+        if av is None:
+            self.notify.warning('sendCatch() - unknown avatar %s' % avId)
+            return
+        if self.pond is None:
+            self.notify.warning('sendCatch() - spot %s has no pond' % self.doId)
+            return
+        code, itemDesc1, itemDesc2, itemDesc3 = self.air.fishManager.getCatch(
+            av, self.pond.getArea(), self.rNumGen)
+        self.d_setMovie(FishGlobals.PullInMovie, code, itemDesc1, itemDesc2, itemDesc3)
 
     def sellFish(self):
         """Sell the tank at the pond rather than at a fisherman.
