@@ -440,7 +440,7 @@ class Deliver(MagicWord):
         return "Delivered {} item(s) to {}.".format(count, toon.getName())
 
 class Furnish(MagicWord):
-    desc = "Debug use only: puts a gender-correct closet, a trunk and a bank into the target's house, plus a few plain items in the attic."
+    desc = "Debug use only: puts a gender-correct closet, a trunk and a bank into the target's house, plus a few plain items and a wallpaper/flooring/moulding/wainscoting/window set in the attic."
     execLocation = MagicWordConfig.EXEC_LOC_SERVER
     accessLevel = 'ADMIN'
 
@@ -448,6 +448,11 @@ class Furnish(MagicWord):
         from toontown.catalog import CatalogItem
         from toontown.catalog.CatalogItemList import CatalogItemList
         from toontown.catalog.CatalogFurnitureItem import CatalogFurnitureItem, FLCloset, FLTrunk, FLBank
+        from toontown.catalog.CatalogWallpaperItem import CatalogWallpaperItem
+        from toontown.catalog.CatalogFlooringItem import CatalogFlooringItem
+        from toontown.catalog.CatalogMouldingItem import CatalogMouldingItem
+        from toontown.catalog.CatalogWainscotingItem import CatalogWainscotingItem
+        from toontown.catalog.CatalogWindowItem import CatalogWindowItem
 
         houseId = toon.getHouseId()
         if not houseId:
@@ -464,11 +469,22 @@ class Furnish(MagicWord):
         atticItems = [CatalogFurnitureItem(100) for i in range(3)]
         candidates = ((closet, FLCloset, 'closet'), (trunk, FLTrunk, 'trunk'), (bank, FLBank, 'bank'))
 
+        # One of each surface kind, plus a window, so the wallpaper/window
+        # pickers in furniture mode (toontown/estate/houseDesign.py:1007-1015)
+        # have something to bring in from the attic.
+        atticWallpaperItems = [CatalogWallpaperItem(1000, 0), CatalogFlooringItem(1000, 0),
+            CatalogMouldingItem(1000, 0), CatalogWainscotingItem(1000, 0)]
+        atticWindowItems = [CatalogWindowItem(10)]
+
         house = self.air.doId2do.get(houseId)
         addedNames = []
         skippedNames = []
         addedAtticCount = len(atticItems)
         skippedAtticCount = 0
+        addedWallpaperCount = len(atticWallpaperItems)
+        skippedWallpaperCount = 0
+        addedWindowCount = len(atticWindowItems)
+        skippedWindowCount = 0
         if house is not None:
             interior = house.getInteriorItemList()
             existingFlags = 0
@@ -516,6 +532,36 @@ class Furnish(MagicWord):
             if furnitureMgr is not None:
                 for offset, item in enumerate(toAdd):
                     furnitureMgr.generateInteriorItem(item, startIndex + offset)
+
+            existingWallpaper = house.getAtticWallpaperList()
+            newWallpaperItems = [item for item in atticWallpaperItems
+                                  if not any(item.compareTo(existing) == 0 for existing in existingWallpaper)]
+            addedWallpaperCount = len(newWallpaperItems)
+            skippedWallpaperCount = len(atticWallpaperItems) - addedWallpaperCount
+            if newWallpaperItems:
+                if furnitureMgr is not None:
+                    wallpaper = house.getAtticWallpaperList()
+                    for item in newWallpaperItems:
+                        wallpaper.append(item)
+                    furnitureMgr.b_setAtticWallpaper(wallpaper.getBlob())
+                else:
+                    for item in newWallpaperItems:
+                        house.addWallpaper(item)
+
+            existingWindows = house.getAtticWindowList()
+            newWindowItems = [item for item in atticWindowItems
+                               if not any(item.compareTo(existing) == 0 for existing in existingWindows)]
+            addedWindowCount = len(newWindowItems)
+            skippedWindowCount = len(atticWindowItems) - addedWindowCount
+            if newWindowItems:
+                if furnitureMgr is not None:
+                    windows = house.getAtticWindowList()
+                    for item in newWindowItems:
+                        windows.append(item)
+                    furnitureMgr.b_setAtticWindows(windows.getBlob())
+                else:
+                    for item in newWindowItems:
+                        house.addWindow(item)
         else:
             # The house isn't generated on this AI (the target isn't inside
             # their own estate right now), so there's no live object to call
@@ -531,12 +577,20 @@ class Furnish(MagicWord):
             attic = CatalogItemList(store=CatalogItem.Customization)
             for item in atticItems:
                 attic.append(item)
+            wallpaper = CatalogItemList(store=CatalogItem.Customization)
+            for item in atticWallpaperItems:
+                wallpaper.append(item)
+            windows = CatalogItemList(store=CatalogItem.Customization)
+            for item in atticWindowItems:
+                windows.append(item)
 
             dclass = self.air.dclassesByName['DistributedHouseAI']
             self.air.dbInterface.updateObject(
                 self.air.dbId, houseId, dclass,
                 {'setInteriorItems': (interior.getBlob(),),
-                 'setAtticItems': (attic.getBlob(),)})
+                 'setAtticItems': (attic.getBlob(),),
+                 'setAtticWallpaper': (wallpaper.getBlob(),),
+                 'setAtticWindows': (windows.getBlob(),)})
 
         # recordPurchase (CatalogFurnitureItem.py:1022-1034) raises these to
         # match the furniture it just delivered; ~max does not touch them.
@@ -547,11 +601,17 @@ class Furnish(MagicWord):
         message = "Furnished {}'s house".format(toon.getName())
         if addedNames:
             message += " with a {}".format(', a '.join(addedNames))
-        message += ", plus {} attic item(s)".format(addedAtticCount)
-        if skippedNames or skippedAtticCount:
+        message += (", plus {} attic item(s), {} attic wallpaper item(s) "
+                     "and {} attic window item(s)").format(
+            addedAtticCount, addedWallpaperCount, addedWindowCount)
+        if skippedNames or skippedAtticCount or skippedWallpaperCount or skippedWindowCount:
             skipParts = list(skippedNames)
             if skippedAtticCount:
                 skipParts.append("{} attic item(s)".format(skippedAtticCount))
+            if skippedWallpaperCount:
+                skipParts.append("{} attic wallpaper item(s)".format(skippedWallpaperCount))
+            if skippedWindowCount:
+                skipParts.append("{} attic window item(s)".format(skippedWindowCount))
             message += " (already had {}, skipped)".format(', '.join(skipParts))
         return message + "."
 
