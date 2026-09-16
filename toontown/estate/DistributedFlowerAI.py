@@ -48,3 +48,4 @@ class DistributedFlowerAI(DistributedPlantBaseAI):
             # `handlePicking`'s skill-up dialog text is the only reference
             # cue this exists at all (DistributedFlower.py:98-109).
             toon.b_setShovelSkill(toon.getShovelSkill() + 1)
+        self.estateAI._checkFlowerTrophies(toon)

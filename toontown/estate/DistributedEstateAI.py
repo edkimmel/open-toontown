@@ -3,6 +3,7 @@ import time
 from direct.directnotify import DirectNotifyGlobal
 from direct.distributed.DistributedObjectAI import DistributedObjectAI
 
+from toontown.estate import GardenGlobals
 from toontown.estate import HouseGlobals
 from toontown.estate.EstateProvisioner import NUM_HOUSE_SLOTS, fieldValue
 from toontown.toonbase import ToontownGlobals
@@ -308,6 +309,23 @@ class DistributedEstateAI(DistributedObjectAI):
         self._checkFlowerTrophies(toon)
 
     def _checkFlowerTrophies(self, toon):
-        # Trophy thresholds are awarded from both this sale path and the
-        # flower-pick path; the shared rule is filled in separately.
-        pass
+        # Shared by the sale path above and DistributedFlowerAI._collectFlower
+        # (the pick path, where the collection actually grows) so both check
+        # the same numbers.  Monotonic: a trophy id already in
+        # getGardenTrophies() is never re-awarded or removed.  One
+        # b_setGardenTrophies + awardedTrophy broadcast per newly earned id,
+        # matching the reference client's own award dialog
+        # (DistributedEstate.py:427-432).
+        collection = getattr(toon, 'flowerCollection', None)
+        if collection is None:
+            return
+        numFlowers = len(collection)
+        have = list(toon.getGardenTrophies())
+        for trophyId in sorted(GardenGlobals.GardenTrophyThresholds):
+            if trophyId in have:
+                continue
+            if numFlowers < GardenGlobals.GardenTrophyThresholds[trophyId]:
+                continue
+            have.append(trophyId)
+            toon.b_setGardenTrophies(list(have))
+            self.sendUpdate('awardedTrophy', [toon.doId])

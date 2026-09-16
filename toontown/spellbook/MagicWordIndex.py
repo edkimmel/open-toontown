@@ -1020,6 +1020,64 @@ class Garden(MagicWord):
             count += 1
         return "Reset {} plant(s) in {}'s garden back to empty plots.".format(count, toon.getName())
 
+class Trophies(MagicWord):
+    desc = ("Sets the target's garden trophies directly, skipping the flower-collection grind. "
+            "Give a count 0-4 to award that many trophy ids in order; omit it to award all four.")
+    execLocation = MagicWordConfig.EXEC_LOC_SERVER
+    accessLevel = 'ADMIN'
+    arguments = [("count", str, False, '')]
+
+    def handleWord(self, invoker, avId, toon, *args):
+        from toontown.estate import GardenGlobals
+
+        raw = (args[0] if len(args) > 0 else '') or ''
+        raw = str(raw).strip()
+        numTrophies = len(GardenGlobals.TrophyDict)
+        try:
+            count = int(raw) if raw else numTrophies
+        except ValueError:
+            return "Specify a trophy count between 0 and {}.".format(numTrophies)
+        if not 0 <= count <= numTrophies:
+            return "Specify a trophy count between 0 and {}.".format(numTrophies)
+
+        trophies = list(range(count))
+        toon.b_setGardenTrophies(trophies)
+        return "Set {}'s garden trophies to {}.".format(toon.getName(), trophies)
+
+class Flowers(MagicWord):
+    desc = ("Fills the target's flower basket with n flowers (the sale's input, distinct from "
+            "the flower collection ~garden seeds) without a real pick.")
+    execLocation = MagicWordConfig.EXEC_LOC_SERVER
+    accessLevel = 'ADMIN'
+    arguments = [("count", str, False, '')]
+
+    # Same (species, variety) pairs Garden.flowers uses.
+    flowers = ((49, 10), (49, 11), (50, 20))
+
+    def handleWord(self, invoker, avId, toon, *args):
+        from toontown.estate import GardenGlobals
+
+        raw = (args[0] if len(args) > 0 else '') or ''
+        raw = str(raw).strip()
+        try:
+            count = int(raw) if raw else 5
+        except ValueError:
+            return "Specify a non-negative number of flowers."
+        if count < 0:
+            return "Specify a non-negative number of flowers."
+
+        for species, variety in self.flowers:
+            varieties = [v[0] for v in GardenGlobals.PlantAttributes[species]['varieties']]
+            if variety not in varieties:
+                return "Bad flower variety {} for species {}.".format(variety, species)
+
+        maxBasket = toon.getMaxFlowerBasket() if hasattr(toon, 'getMaxFlowerBasket') else count
+        count = min(count, maxBasket)
+        speciesList = [self.flowers[i % len(self.flowers)][0] for i in range(count)]
+        varietyList = [self.flowers[i % len(self.flowers)][1] for i in range(count)]
+        toon.b_setFlowerBasket(speciesList, varietyList)
+        return "Filled {}'s flower basket with {} flower(s).".format(toon.getName(), count)
+
 class Fish(MagicWord):
     aliases = ["givefish"]
     desc = "Puts a few fish in the target's bucket and records a fish collection (with the first trophy)."

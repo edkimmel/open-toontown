@@ -1496,3 +1496,10 @@ TrophyDict = {0: (TTLocalizer.GardenTrophyNameDict[0],),
  1: (TTLocalizer.GardenTrophyNameDict[1],),
  2: (TTLocalizer.GardenTrophyNameDict[2],),
  3: (TTLocalizer.GardenTrophyNameDict[3],)}
+
+# Flower-collection size at which each trophy id is awarded: trophy n at
+# (n+1)/4 of getNumberOfFlowerVarieties() (40 on this data set -> 10, 20,
+# 30, 40).  Not part of the original data -- there is no such table
+# anywhere else -- but it has to live somewhere so both a pick and a sale
+# can check it against the same numbers.
+GardenTrophyThresholds = {0: 10, 1: 20, 2: 30, 3: 40}
