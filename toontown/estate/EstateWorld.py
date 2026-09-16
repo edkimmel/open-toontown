@@ -30,6 +30,23 @@ class EstateWorld:
         return [house.interiorZoneId for house in self.houses
                 if house.interiorZoneId is not None]
 
+    def destroy(self, air):
+        """Unload the world.  The houses take their own children with them
+        (DistributedHouseAI.destroy); the estate and the houses themselves are
+        database objects, so their delete is an unload and the next visit
+        activates the same doIds again."""
+        for house in self.houses:
+            house.destroy()
+
+        self.houses = []
+        if self.estate is not None:
+            self.estate.requestDelete()
+            self.estate = None
+
+        if self.zoneId is not None:
+            air.deallocateZone(self.zoneId)
+            self.zoneId = None
+
     def getZones(self):
         zones = [] if self.zoneId is None else [self.zoneId]
         zones.extend(self.getHouseZones())
