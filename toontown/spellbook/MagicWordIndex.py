@@ -957,7 +957,14 @@ class Garden(MagicWord):
             if inventory is None:
                 return "{} has no inventory.".format(toon.getName())
             if inventory.numItem(self.PLANT_TREE_TRACK, self.PLANT_TREE_LEVEL) <= 0:
-                inventory.addItem(self.PLANT_TREE_TRACK, self.PLANT_TREE_LEVEL)
+                # addItems (InventoryBase.py:95-114) silently returns 0 with
+                # no exception when the toon lacks track access -- grant it
+                # first (a fresh login:bootstrap_fresh_avatar toon has none)
+                # and still check the return value before planting.
+                if not toon.hasTrackAccess(self.PLANT_TREE_TRACK):
+                    toon.addTrackAccess(self.PLANT_TREE_TRACK)
+                if not inventory.addItem(self.PLANT_TREE_TRACK, self.PLANT_TREE_LEVEL):
+                    return "{} could not be granted a gag tree gag.".format(toon.getName())
                 toon.b_setInventory(inventory.makeNetString())
             plot.plotEntered()
             plot.plantGagTree(self.PLANT_TREE_TRACK, self.PLANT_TREE_LEVEL)
