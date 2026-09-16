@@ -490,8 +490,6 @@ class Furnish(MagicWord):
             existingAttic = house.getAtticItemList()
             newAtticItems = [item for item in atticItems
                              if not any(item.compareTo(existing) == 0 for existing in existingAttic)]
-            for item in newAtticItems:
-                house.addAtticItem(item)
             addedAtticCount = len(newAtticItems)
             skippedAtticCount = len(atticItems) - addedAtticCount
 
@@ -501,6 +499,20 @@ class Furnish(MagicWord):
             # DOs generated directly, or the room stays bare even though the
             # blob above now has them in it.
             furnitureMgr = getattr(house, 'furnitureMgr', None)
+            if newAtticItems:
+                if furnitureMgr is not None:
+                    # setAtticItems is broadcast on the manager but only db
+                    # on the house itself (etc/toon.dc:1212 vs 2090), so
+                    # writing through house.addAtticItem never reaches a
+                    # client already in furniture mode -- go through the
+                    # manager instead, the same way its own attic mutators do.
+                    attic = house.getAtticItemList()
+                    for item in newAtticItems:
+                        attic.append(item)
+                    furnitureMgr.b_setAtticItems(attic.getBlob())
+                else:
+                    for item in newAtticItems:
+                        house.addAtticItem(item)
             if furnitureMgr is not None:
                 for offset, item in enumerate(toAdd):
                     furnitureMgr.generateInteriorItem(item, startIndex + offset)
