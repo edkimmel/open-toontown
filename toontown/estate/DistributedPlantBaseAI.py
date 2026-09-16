@@ -52,6 +52,9 @@ class DistributedPlantBaseAI(DistributedLawnDecorAI):
     def getGrowthLevel(self):
         return self.growthLevel
 
+    def d_setGrowthLevel(self, growthLevel):
+        self.sendUpdate('setGrowthLevel', [growthLevel])
+
     def waterPlant(self):
         avId = self.air.getAvatarIdFromSender()
         if avId != self.getOwnerAvId() or self.isBusy():
