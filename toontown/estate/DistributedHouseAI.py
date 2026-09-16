@@ -94,11 +94,22 @@ class DistributedHouseAI(DistributedObjectAI):
     def getAtticItems(self):
         return self.atticItems
 
+    def b_setAtticItems(self, items):
+        # setAtticItems is `required db`, not broadcast (etc/toon.dc:1212):
+        # nothing subscribes to it, but the update still has to reach this
+        # object's own doId for the DBSS to persist it.
+        self.setAtticItems(items)
+        self.sendUpdate('setAtticItems', [items])
+
     def setInteriorItems(self, items):
         self.interiorItems = items
 
     def getInteriorItems(self):
         return self.interiorItems
+
+    def b_setInteriorItems(self, items):
+        self.setInteriorItems(items)
+        self.sendUpdate('setInteriorItems', [items])
 
     def setAtticWallpaper(self, wallpaper):
         self.atticWallpaper = wallpaper
@@ -106,11 +117,19 @@ class DistributedHouseAI(DistributedObjectAI):
     def getAtticWallpaper(self):
         return self.atticWallpaper
 
+    def b_setAtticWallpaper(self, wallpaper):
+        self.setAtticWallpaper(wallpaper)
+        self.sendUpdate('setAtticWallpaper', [wallpaper])
+
     def setInteriorWallpaper(self, wallpaper):
         self.interiorWallpaper = wallpaper
 
     def getInteriorWallpaper(self):
         return self.interiorWallpaper
+
+    def b_setInteriorWallpaper(self, wallpaper):
+        self.setInteriorWallpaper(wallpaper)
+        self.sendUpdate('setInteriorWallpaper', [wallpaper])
 
     def setAtticWindows(self, windows):
         self.atticWindows = windows
@@ -118,17 +137,29 @@ class DistributedHouseAI(DistributedObjectAI):
     def getAtticWindows(self):
         return self.atticWindows
 
+    def b_setAtticWindows(self, windows):
+        self.setAtticWindows(windows)
+        self.sendUpdate('setAtticWindows', [windows])
+
     def setInteriorWindows(self, windows):
         self.interiorWindows = windows
 
     def getInteriorWindows(self):
         return self.interiorWindows
 
+    def b_setInteriorWindows(self, windows):
+        self.setInteriorWindows(windows)
+        self.sendUpdate('setInteriorWindows', [windows])
+
     def setDeletedItems(self, items):
         self.deletedItems = items
 
     def getDeletedItems(self):
         return self.deletedItems
+
+    def b_setDeletedItems(self, items):
+        self.setDeletedItems(items)
+        self.sendUpdate('setDeletedItems', [items])
 
     def setCannonEnabled(self, enabled):
         self.cannonEnabled = enabled
@@ -143,8 +174,8 @@ class DistributedHouseAI(DistributedObjectAI):
             self.interiorItems, store=CatalogItem.Customization | CatalogItem.Location)
 
     def setInteriorItemList(self, items):
-        self.interiorItems = items.getBlob(
-            store=CatalogItem.Customization | CatalogItem.Location)
+        self.b_setInteriorItems(items.getBlob(
+            store=CatalogItem.Customization | CatalogItem.Location))
 
     def getAtticItemList(self):
         return CatalogItemList.CatalogItemList(
@@ -155,7 +186,7 @@ class DistributedHouseAI(DistributedObjectAI):
         purchase into the attic (toontown/catalog/CatalogFurnitureItem.py:1032)."""
         items = self.getAtticItemList()
         items.append(item)
-        self.setAtticItems(items.getBlob())
+        self.b_setAtticItems(items.getBlob())
 
     def getAtticWallpaperList(self):
         return CatalogItemList.CatalogItemList(
