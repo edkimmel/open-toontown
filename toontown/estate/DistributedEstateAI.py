@@ -239,3 +239,33 @@ class DistributedEstateAI(DistributedObjectAI):
         avId = self.air.getAvatarIdFromSender()
         serverTime = int(time.time() % HouseGlobals.DAY_NIGHT_PERIOD)
         self.sendUpdateToAvatarId(avId, 'setServerTime', [serverTime])
+
+    def completeFlowerSale(self, sell):
+        # completeFlowerSale (etc/toon.dc:1198) is the done event from
+        # FlowerSellGUI.__handleSaleDone (FlowerSellGUI.py); sell is 1 on
+        # OK, 0 on cancel or on stoppedAsleep.  __updateFlowerValue prices
+        # the basket client-side (FlowerSellGUI.py:45-52) purely for
+        # display -- that number never reaches this method, so there is
+        # nothing here to trust or distrust; the value is always
+        # recomputed from the toon's own basket.
+        avId = self.air.getAvatarIdFromSender()
+        if avId not in self.idList:
+            self.air.writeServerEvent(
+                'suspicious', avId,
+                'completeFlowerSale from a toon not in this estate')
+            return
+        if not sell:
+            return
+        toon = self.air.doId2do.get(avId)
+        if toon is None:
+            return
+        value = toon.flowerBasket.getTotalValue()
+        if value:
+            toon.addMoney(value)
+        toon.b_setFlowerBasket([], [])
+        self._checkFlowerTrophies(toon)
+
+    def _checkFlowerTrophies(self, toon):
+        # Trophy thresholds are awarded from both this sale path and the
+        # flower-pick path; the shared rule is filled in separately.
+        pass

@@ -1561,9 +1561,8 @@ class Fireworks(MagicWord):
         return f"Started firework {'show' if count == 1 else 'shows'} in {count} {'zone' if count == 1 else 'zones'}!"
 
 class SetSpeedChatStyle(MagicWord):
-    # BUG FIX (dev-stack crash, coordinator report): the first version of
-    # this word did `from toontown.shtiker.OptionsPage import
-    # speedChatStyles` to bounds-check/name the index -- OptionsPage.py is
+    # The first version of this word did `from toontown.shtiker.OptionsPage
+    # import speedChatStyles` to bounds-check/name the index -- OptionsPage.py is
     # a CLIENT Shticker Book page module; its class bodies default-
     # construct against `aspect2d` (`OptionsPage.py:124,469`
     # `def __init__(self, parent = aspect2d)`), a ShowBase builtin that
