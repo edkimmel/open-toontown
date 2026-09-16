@@ -787,18 +787,50 @@ class Golf(MagicWord):
 
 class Garden(MagicWord):
     aliases = ["gardenstarted"]
-    desc = "Marks the target's garden as started (so the garden page appears), with shovel skill and a few flowers."
+    desc = ("Marks the target's garden as started (so the garden page appears), with shovel "
+            "skill and a few flowers. Sub-commands seed garden state without waiting real "
+            "days: 'plant flower|tree|statuary' plants a default into the first empty "
+            "matching plot of the invoker's own estate, 'grow [level]' maxes every currently "
+            "planted item's growth and water levels, 'reset' empties every planted hard "
+            "point back to a bare plot.")
     execLocation = MagicWordConfig.EXEC_LOC_SERVER
     accessLevel = 'ADMIN'
-    arguments = [("shovelSkill", int, False, 40)]
+    arguments = [("command", str, False, ''), ("option", str, False, '')]
 
     # (species, variety) pairs from GardenGlobals.PlantAttributes.
     flowers = ((49, 10), (49, 11), (50, 20))
 
+    # `~garden plant` defaults -- species 49 variety index 0 is recipe 10
+    # (GardenGlobals.py:92,358-359), a single-bean flower; track/level 0 is
+    # always unlocked; species 200 is the toon statuary whose special (100)
+    # is the cheapest garden special (GardenGlobals.py:212-216,428-429).
+    PLANT_FLOWER_SPECIES = 49
+    PLANT_FLOWER_VARIETY = 0
+    PLANT_TREE_TRACK = 0
+    PLANT_TREE_LEVEL = 0
+    PLANT_STATUARY_SPECIES = 200
+    PLANT_STATUARY_SPECIAL = 100
+
     def handleWord(self, invoker, avId, toon, *args):
         from toontown.estate import GardenGlobals
 
-        shovelSkill = args[0]
+        command = (args[0] if len(args) > 0 else '') or ''
+        option = (args[1] if len(args) > 1 else '') or ''
+        command = str(command).strip().lower()
+        option = str(option).strip().lower()
+
+        if command == 'plant':
+            return self._plant(toon, option)
+        if command == 'grow':
+            return self._grow(toon, option)
+        if command == 'reset':
+            return self._reset(toon)
+
+        # Plain `~garden [shovelSkill]` -- unchanged from before this task.
+        try:
+            shovelSkill = int(command) if command else 40
+        except ValueError:
+            return "Specify a shovel skill below the next shovel's skill points."
         if not 0 <= shovelSkill < GardenGlobals.ShovelAttributes[toon.getShovel()]['skillPts']:
             return "Specify a shovel skill below the next shovel's skill points ({}).".format(
                 GardenGlobals.ShovelAttributes[toon.getShovel()]['skillPts'])
@@ -812,6 +844,139 @@ class Garden(MagicWord):
         toon.b_setShovelSkill(shovelSkill)
         toon.b_setFlowerCollection([f[0] for f in self.flowers], [f[1] for f in self.flowers])
         return f"Started {toon.getName()}'s garden with {len(self.flowers)} flowers and shovel skill {shovelSkill}."
+
+    def _findEstateManager(self):
+        from toontown.estate.EstateManagerAI import EstateManagerAI
+        for do in self.air.doId2do.values():
+            if isinstance(do, EstateManagerAI):
+                return do
+        return None
+
+    def _residentHouse(self, toon):
+        """The invoker's own live house and estate, found the same way the
+        estate manager's `worlds` map (EstateManagerAI.py:17-19) resolves
+        it -- `(None, None)` if the toon isn't
+        resident in a live estate whose garden has been generated."""
+        accountId = getattr(toon, 'DISLid', None)
+        if not accountId:
+            return (None, None)
+        estateMgr = self._findEstateManager()
+        if estateMgr is None:
+            return (None, None)
+        world = estateMgr.worlds.get(accountId)
+        if world is None or world.estate is None:
+            return (None, None)
+        for house in world.houses:
+            if house.avatarId == toon.doId and (house.gardenPlots or house.gardenPlants):
+                return (house, world.estate)
+        return (None, None)
+
+    def _livePlots(self, house, estateAI):
+        # Scans live DOs rather than house.gardenPlots -- B6's own
+        # _removeFromGarden (DistributedLawnDecorAI.py:95-112) regenerates a
+        # plot without appending it back to the house's bookkeeping list, so
+        # that list can go stale after any plant/harvest/reset.
+        from toontown.estate.DistributedGardenPlotAI import DistributedGardenPlotAI
+        return [do for do in self.air.doId2do.values()
+                if isinstance(do, DistributedGardenPlotAI) and do.estateAI is estateAI
+                and do.ownerIndex == house.gardenPos]
+
+    def _livePlants(self, house, estateAI):
+        from toontown.estate.DistributedGardenPlotAI import DistributedGardenPlotAI
+        from toontown.estate.DistributedLawnDecorAI import DistributedLawnDecorAI
+        return [do for do in self.air.doId2do.values()
+                if isinstance(do, DistributedLawnDecorAI) and not isinstance(do, DistributedGardenPlotAI)
+                and do.estateAI is estateAI and do.ownerIndex == house.gardenPos]
+
+    def _plotFor(self, house, estateAI, wantedType):
+        from toontown.estate import GardenGlobals
+        for plot in self._livePlots(house, estateAI):
+            if GardenGlobals.whatCanBePlanted(house.gardenPos, plot.getPlot()) == wantedType:
+                return plot
+        return None
+
+    def _plant(self, toon, option):
+        from toontown.estate import GardenGlobals
+
+        house, estateAI = self._residentHouse(toon)
+        if house is None:
+            return "{} is not resident in a live estate with a garden.".format(toon.getName())
+
+        if option == 'flower':
+            plot = self._plotFor(house, estateAI, GardenGlobals.FLOWER_TYPE)
+            if plot is None:
+                return "{} has no empty flower plot.".format(toon.getName())
+            numBeans = GardenGlobals.getNumBeansRequired(self.PLANT_FLOWER_SPECIES, self.PLANT_FLOWER_VARIETY)
+            if numBeans < 0 or toon.getMoney() + toon.getBankMoney() < numBeans:
+                return "{} cannot afford a flower ({} beans needed) -- run ~money first.".format(
+                    toon.getName(), numBeans)
+            plot.plotEntered()
+            plot.plantFlower(self.PLANT_FLOWER_SPECIES, self.PLANT_FLOWER_VARIETY)
+            return "Planted a flower in {}'s garden.".format(toon.getName())
+
+        if option == 'tree':
+            plot = self._plotFor(house, estateAI, GardenGlobals.GAG_TREE_TYPE)
+            if plot is None:
+                return "{} has no empty gag tree plot.".format(toon.getName())
+            inventory = getattr(toon, 'inventory', None)
+            if inventory is None:
+                return "{} has no inventory.".format(toon.getName())
+            if inventory.numItem(self.PLANT_TREE_TRACK, self.PLANT_TREE_LEVEL) <= 0:
+                inventory.addItem(self.PLANT_TREE_TRACK, self.PLANT_TREE_LEVEL)
+                toon.b_setInventory(inventory.makeNetString())
+            plot.plotEntered()
+            plot.plantGagTree(self.PLANT_TREE_TRACK, self.PLANT_TREE_LEVEL)
+            return "Planted a gag tree in {}'s garden.".format(toon.getName())
+
+        if option == 'statuary':
+            plot = self._plotFor(house, estateAI, GardenGlobals.STATUARY_TYPE)
+            if plot is None:
+                return "{} has no empty statuary plot.".format(toon.getName())
+            hasSpecial = any(index == self.PLANT_STATUARY_SPECIAL and count > 0
+                             for index, count in toon.getGardenSpecials())
+            if not hasSpecial:
+                toon.addGardenItem(self.PLANT_STATUARY_SPECIAL, 1)
+            plot.plotEntered()
+            plot.plantStatuary(self.PLANT_STATUARY_SPECIES)
+            return "Planted a statuary in {}'s garden.".format(toon.getName())
+
+        return "Specify ~garden plant flower, tree, or statuary."
+
+    def _grow(self, toon, option):
+        house, estateAI = self._residentHouse(toon)
+        if house is None:
+            return "{} is not resident in a live estate with a garden.".format(toon.getName())
+
+        level = None
+        if option:
+            try:
+                level = int(option)
+            except ValueError:
+                return "Specify a numeric growth level."
+
+        count = 0
+        for plant in self._livePlants(house, estateAI):
+            if not hasattr(plant, 'growthThresholds'):
+                continue  # statuary has no growth stages -- always fully grown
+            growthLevel = level if level is not None else plant.growthThresholds[2]
+            plant.setGrowthLevel(growthLevel)
+            plant.d_setGrowthLevel(growthLevel)
+            plant.setWaterLevel(plant.maxWaterLevel)
+            plant.d_setWaterLevel(plant.maxWaterLevel)
+            plant._persistLevels()
+            count += 1
+        return "Grew {} plant(s) in {}'s garden.".format(count, toon.getName())
+
+    def _reset(self, toon):
+        house, estateAI = self._residentHouse(toon)
+        if house is None:
+            return "{} is not resident in a live estate with a garden.".format(toon.getName())
+
+        count = 0
+        for plant in self._livePlants(house, estateAI):
+            plant._removeFromGarden()
+            count += 1
+        return "Reset {} plant(s) in {}'s garden back to empty plots.".format(count, toon.getName())
 
 class Fish(MagicWord):
     aliases = ["givefish"]
