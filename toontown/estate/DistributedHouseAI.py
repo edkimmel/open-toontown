@@ -1,3 +1,5 @@
+import time
+
 from direct.directnotify import DirectNotifyGlobal
 from direct.distributed.DistributedObjectAI import DistributedObjectAI
 
@@ -5,13 +7,19 @@ from toontown.building import DoorTypes
 from toontown.catalog import CatalogItem
 from toontown.catalog import CatalogItemList
 from toontown.estate import GardenGlobals
+from toontown.estate.DistributedFlowerAI import DistributedFlowerAI
 from toontown.estate.DistributedFurnitureManagerAI import DistributedFurnitureManagerAI
+from toontown.estate.DistributedGagTreeAI import DistributedGagTreeAI
 from toontown.estate.DistributedGardenBoxAI import DistributedGardenBoxAI
 from toontown.estate.DistributedGardenPlotAI import DistributedGardenPlotAI
 from toontown.estate.DistributedHouseDoorAI import DistributedHouseDoorAI
 from toontown.estate.DistributedHouseInteriorAI import DistributedHouseInteriorAI
 from toontown.estate.DistributedMailboxAI import DistributedMailboxAI
+from toontown.estate.DistributedStatuaryAI import DistributedStatuaryAI
+from toontown.estate.DistributedToonStatuaryAI import DistributedToonStatuaryAI
 from toontown.estate.EstateProvisioner import fieldValue
+
+SECONDS_PER_DAY = 24 * 60 * 60
 
 
 class DistributedHouseAI(DistributedObjectAI):
@@ -41,6 +49,7 @@ class DistributedHouseAI(DistributedObjectAI):
         self.insideDoor = None
         self.gardenBoxes = []
         self.gardenPlots = []
+        self.gardenPlants = []
 
     def loadFromDb(self, fields):
         fields = fields or {}
@@ -265,17 +274,21 @@ class DistributedHouseAI(DistributedObjectAI):
         self.mailbox.generateWithRequired(self.zoneId)
 
     def createGarden(self, estateAI):
-        """Generate this house's flower boxes and empty plot hard points,
-        indexed by `gardenPos` (etc/toon.dc:1208, set to the house's own slot
-        by EstateProvisioner.py:157) the same way the client's
+        """Generate this house's flower boxes, empty plot hard points, and
+        any already-planted hard point's grown object, indexed by
+        `gardenPos` (etc/toon.dc:1208, set to the house's own slot by
+        EstateProvisioner.py:157) the same way the client's
         `whatCanBePlanted(ownerIndex, plot)` does (GardenGlobals.py:1277,
-        DistributedGardenPlot.py:38).  A hard point already holding a planted
-        `lawnItem` (struct at etc/toon.dc:1161, field order
-        type/hardPoint/waterLevel/growthLevel/optional) is skipped -- planting
-        replaces the plot DO with a grown one in a later task.  Idempotent:
-        does nothing if this house's garden is already generated."""
-        if self.gardenBoxes or self.gardenPlots:
+        DistributedGardenPlot.py:38).  A hard point already holding a
+        planted `lawnItem` (struct at etc/toon.dc:1161, field order
+        type/hardPoint/waterLevel/growthLevel/optional) regenerates as its
+        grown-object DO (`_regeneratePlant`) instead of an empty plot.
+        Idempotent: does nothing if this house's garden is already
+        generated."""
+        if self.gardenBoxes or self.gardenPlots or self.gardenPlants:
             return
+
+        self._applyGrowthTick(estateAI)
 
         for boxIndex, (x, y, h, boxType) in enumerate(GardenGlobals.estateBoxes[self.gardenPos]):
             box = DistributedGardenBoxAI(self.air, estateAI)
@@ -287,9 +300,11 @@ class DistributedHouseAI(DistributedObjectAI):
             box.generateWithRequired(self.zoneId)
             self.gardenBoxes.append(box)
 
-        plantedHardPoints = set(item[1] for item in estateAI.slotItems[self.gardenPos])
+        plantedItems = dict((item[1], item) for item in estateAI.slotItems[self.gardenPos])
         for hardPoint, (x, y, h, plantType) in enumerate(GardenGlobals.estatePlots[self.gardenPos]):
-            if hardPoint in plantedHardPoints:
+            item = plantedItems.get(hardPoint)
+            if item is not None:
+                self._regeneratePlant(estateAI, hardPoint, x, y, h, item)
                 continue
             plot = DistributedGardenPlotAI(self.air, estateAI)
             plot.setPlot(hardPoint)
@@ -299,14 +314,95 @@ class DistributedHouseAI(DistributedObjectAI):
             plot.generateWithRequired(self.zoneId)
             self.gardenPlots.append(plot)
 
+    def _regeneratePlant(self, estateAI, hardPoint, x, y, h, item):
+        """Rebuild the grown-object DO a persisted `lawnItem` describes,
+        the same construction `DistributedGardenPlotAI._replaceWithGrownObject`
+        does at plant time, keyed by `PlantAttributes[type]['plantType']`
+        (GAG_TREE_TYPE/FLOWER_TYPE/STATUARY_TYPE) and, for statuary,
+        whether `type` is one of `ToonStatuaryTypeIndices` -- the same two
+        checks `plantStatuary`/`plantToonStatuary` use."""
+        plantType, _hardPoint, waterLevel, growthLevel, optional = item
+        attrib = GardenGlobals.PlantAttributes.get(plantType, {})
+        kind = attrib.get('plantType')
+        if kind == GardenGlobals.FLOWER_TYPE:
+            grown = DistributedFlowerAI(self.air, estateAI)
+            grown.setVariety(optional)
+        elif kind == GardenGlobals.GAG_TREE_TYPE:
+            grown = DistributedGagTreeAI(self.air, estateAI)
+        elif plantType in GardenGlobals.ToonStatuaryTypeIndices:
+            grown = DistributedToonStatuaryAI(self.air, estateAI)
+            grown.setOptional(optional)
+        else:
+            grown = DistributedStatuaryAI(self.air, estateAI)
+        grown.setPlot(hardPoint)
+        grown.setPosition(x, y, 0)
+        grown.setHeading(h)
+        grown.setOwnerIndex(self.gardenPos)
+        grown.setTypeIndex(plantType)
+        grown.setWaterLevel(waterLevel)
+        grown.setGrowthLevel(growthLevel)
+        grown.generateWithRequired(self.zoneId)
+        self.gardenPlants.append(grown)
+
+    def _applyGrowthTick(self, estateAI):
+        """No day-boundary growth exists in the reference at all -- nothing
+        outside DistributedPlantBase(AI)'s own setGrowthLevel/setWaterLevel
+        setters ever assigns growthLevel or waterLevel.  This task adds the
+        minimal one, piggybacked on the estate-wide `lastEpochTimeStamp`
+        field (etc/toon.dc:1176, `required airecv db`), which the reference
+        declares and loads (DistributedEstateAI.py:19,29) but never uses
+        for anything.  One estate, one shared clock: every planted item
+        grows/wilts by the same number of elapsed days since the garden was
+        last generated.  Per elapsed day: watered (waterLevel > 0) advances
+        growthLevel by one, capped at growthThresholds[2] (full bloom/
+        fruiting -- reference client behavior does not change past that
+        point, DistributedPlantBase.py:109-163), and spends one day of
+        water; unwatered wilts growthLevel back down by one (floored at 0)
+        and drains water further (floored at the type's minWaterLevel).
+        Statuary has no `growthThresholds` (DistributedStatuaryAI's own
+        comment) so it is skipped -- always planted fully grown.  The first
+        time an estate is ever generated there is nothing to grow yet, so
+        this only seeds the timestamp.  Elapsed days are capped at 60; the
+        clamps make anything past that a no-op anyway, this just bounds the
+        loop."""
+        now = int(time.time())
+        last = estateAI.getLastEpochTimeStamp()
+        if last == 0:
+            estateAI.b_setLastEpochTimeStamp(now)
+            return
+        elapsedDays = min((now - last) // SECONDS_PER_DAY, 60)
+        if elapsedDays <= 0:
+            return
+        items = list(estateAI.slotItems[self.gardenPos])
+        changed = False
+        for i, (plantType, hardPoint, waterLevel, growthLevel, optional) in enumerate(items):
+            attrib = GardenGlobals.PlantAttributes.get(plantType, {})
+            thresholds = attrib.get('growthThresholds')
+            if not thresholds:
+                continue
+            minLevel = attrib.get('minWaterLevel', -2)
+            for _day in range(elapsedDays):
+                if waterLevel > 0:
+                    growthLevel = min(growthLevel + 1, thresholds[2])
+                    waterLevel -= 1
+                else:
+                    growthLevel = max(growthLevel - 1, 0)
+                    waterLevel = max(waterLevel - 1, minLevel)
+            items[i] = (plantType, hardPoint, waterLevel, growthLevel, optional)
+            changed = True
+        if changed:
+            estateAI.b_setSlotItems(self.gardenPos, items)
+        estateAI.b_setLastEpochTimeStamp(last + elapsedDays * SECONDS_PER_DAY)
+
     def destroy(self):
         if self.furnitureMgr is not None:
             self.furnitureMgr.destroy()
             self.furnitureMgr = None
-        for garden in self.gardenBoxes + self.gardenPlots:
+        for garden in self.gardenBoxes + self.gardenPlots + self.gardenPlants:
             garden.requestDelete()
         self.gardenBoxes = []
         self.gardenPlots = []
+        self.gardenPlants = []
         for distObj in (self.mailbox, self.insideDoor, self.door, self.interior):
             if distObj is not None:
                 distObj.requestDelete()
