@@ -36,6 +36,14 @@ class DistributedEstateAI(DistributedObjectAI):
         DistributedObjectAI.announceGenerate(self)
         self._idListLive = True
         self.b_setIdList(list(self.slotToonIds))
+        # setTreasureIds (etc/toon.dc:1175) is the only thing that creates
+        # estate.flyingTreasureId (DistributedEstate.py:233-236), which
+        # DistributedCannon.__calcHitTreasures (DistributedCannon.py:1255)
+        # reads unconditionally on every cannon fire.  No estate treasure
+        # planner exists in this codebase, so there are never any flying
+        # treasure doIds to report; send the empty list so the attribute
+        # always exists by the time a cannon can be fired.
+        self.d_setTreasureIds([])
 
     def getIdList(self):
         return self.idList
@@ -49,6 +57,9 @@ class DistributedEstateAI(DistributedObjectAI):
 
     def d_setIdList(self, idList):
         self.sendUpdate('setIdList', [idList])
+
+    def d_setTreasureIds(self, doIds):
+        self.sendUpdate('setTreasureIds', [doIds])
 
     def loadFromDb(self, fields):
         fields = fields or {}
