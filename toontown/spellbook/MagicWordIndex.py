@@ -1805,6 +1805,21 @@ class Rod(MagicWord):
         return "Set {}'s fishing rod to {}.".format(toon.getName(), rodId)
 
 
+class Tank(MagicWord):
+    desc = "Sets the target's fish tank capacity (etc/toon.dc:539, uint8)."
+    execLocation = MagicWordConfig.EXEC_LOC_SERVER
+    accessLevel = 'ADMIN'
+    arguments = [("maxTank", int, False, 20)]
+
+    def handleWord(self, invoker, avId, toon, *args):
+        maxTank = args[0]
+        if not 0 <= maxTank <= 255:
+            return "Specify a tank capacity between 0 and 255."
+
+        toon.b_setMaxFishTank(maxTank)
+        return "Set {}'s max fish tank to {}.".format(toon.getName(), maxTank)
+
+
 class SetSpeedChatStyle(MagicWord):
     # The first version of this word did `from toontown.shtiker.OptionsPage
     # import speedChatStyles` to bounds-check/name the index -- OptionsPage.py is
