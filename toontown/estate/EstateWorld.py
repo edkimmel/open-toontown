@@ -22,6 +22,17 @@ FISHING_SPOT_POSES = (
     (46.8254, -113.682, 0.46015, 135, 0, 0),
 )
 
+# Where a pet is put when it is activated into an estate.
+# DistributedPetAI.generate drops a freshly activated pet at a random point
+# in a +/-20 box around the zone origin with no ground check (:512-514),
+# which in the estate is the pond, a house, or off the terrain.  This is the
+# flower-sell wheelbarrow's own patch of lawn (WHEELBARROW_POS above,
+# DistributedEstate.py:399) with the same ground z, 12 units along +y so the
+# pet stands clear of the wheelbarrow and of the fireworks cannon 10 units
+# along +x; it is ~224 units from the fishing pond's circle
+# (FishingTargetGlobals centre (30, -126, -0.3), radius 16).
+PET_POS = (-142.586, 16.353, 0.025)
+
 
 def makeFireworksCannon(air, world):
     """Generate the estate's one fireworks cannon into its zone, at a fixed
@@ -67,6 +78,25 @@ def makeFishingPond(air, world):
     return pond
 
 
+def placePet(pet):
+    """Put an activated pet on the estate's lawn, overriding the random
+    position generate() gave it."""
+    pet.setPos(*PET_POS)
+    pet.setH(0)
+    return pet
+
+
+def teardownPets(world):
+    """Drop the estate's pets.  requestDelete, never delete: it stamps the
+    pet's last-seen timestamp and unwinds the simulation
+    (DistributedPetAI.py:544-553,569-624), and the record stays so the next
+    visit activates the same doId again."""
+    for pet in world.pets:
+        pet.requestDelete()
+
+    world.pets = []
+
+
 def teardownFishingPond(world):
     """Remove the estate's fishing pond, its spots and its targets, spots
     and targets first so the pond is the last of the three to go -- shared
@@ -103,6 +133,7 @@ class EstateWorld:
         self.fishingPond = None
         self.fishingSpots = []
         self.fishingTargets = []
+        self.pets = []
 
     def addOccupant(self, avId):
         if avId not in self.occupants:
@@ -121,6 +152,11 @@ class EstateWorld:
         (DistributedHouseAI.destroy); the estate and the houses themselves are
         database objects, so their delete is an unload and the next visit
         activates the same doIds again."""
+        # the pets first: a pet unwinds its own simulation as it goes, and
+        # announceZoneChange reads the estate it is standing in
+        # (DistributedPetAI.py:135-142)
+        teardownPets(self)
+
         for house in self.houses:
             house.destroy()
 
@@ -266,6 +302,58 @@ class EstateWorldOperation:
         if world.fishingPond is None:
             makeFishingPond(self.air, world)
 
+        self.__activatePets()
+
+    def __activatePets(self):
+        """Bring the pet of every toon this estate is being opened for into
+        the estate zone.  A pet is a database object of its own, so it is
+        activated, not generated -- the same rule, and the same wait, the
+        estate and the houses use at :211-241 above."""
+        world = self.world
+        avIds = [world.ownerId]
+        avIds.extend(avId for avId in world.occupants if avId not in avIds)
+        self.activating = []
+        for avId in avIds:
+            av = self.air.doId2do.get(avId)
+            petId = getattr(av, 'petId', 0)
+            if petId and petId not in self.activating:
+                self.activating.append(petId)
+
+        if not self.activating:
+            self.__finish()
+            return
+
+        for doId in self.activating:
+            self.air.sendActivate(doId, self.air.districtId, world.zoneId)
+
+        self.waited = 0
+        self.__waitForPets()
+
+    def __waitForPets(self, task=None):
+        missing = [doId for doId in self.activating if doId not in self.air.doId2do]
+        if missing:
+            self.waited += 1
+            if self.waited > self.ACTIVATE_TRIES:
+                # unlike the estate and the houses, a pet that never comes
+                # back is not worth holding the estate closed for
+                self.notify.warning('Pets %s never activated!' % missing)
+            else:
+                taskMgr.doMethodLater(self.ACTIVATE_POLL, self.__waitForPets,
+                                      'estate-pet-activate-%s' % self.world.estateId)
+                return
+
+        self.__placePets()
+
+    def __placePets(self):
+        world = self.world
+        for doId in self.activating:
+            pet = self.air.doId2do.get(doId)
+            if pet is None:
+                continue
+
+            world.pets.append(placePet(pet))
+
+        self.activating = []
         self.__finish()
 
     def __finish(self):

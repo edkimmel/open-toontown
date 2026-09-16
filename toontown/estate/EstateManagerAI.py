@@ -145,6 +145,14 @@ class EstateManagerAI(DistributedObjectAI):
         self.owner2estateZone[avId] = world.zoneId
         self.sendUpdateToAvatarId(avId, 'setAvHouseId', [avId, world.houseIds])
         self.sendUpdateToAvatarId(avId, 'setEstateZone', [world.ownerId, world.zoneId])
+        # DistributedToonAI.enterEstate:3057-3072 is what gives the avatar its
+        # collision sphere and enters it into the pet looker system, the half
+        # a pet's awareness code notices (toontown/pets/PetLookerAI.py); it
+        # reads the zone lookups above, so it runs after them.  Both it and
+        # exitEstate only exist when pets are on.
+        av = self.air.doId2do.get(avId)
+        if av is not None and hasattr(av, 'enterEstate'):
+            av.enterEstate(world.ownerId, world.zoneId)
 
     def exitEstate(self):
         senderId = self.air.getAvatarIdFromSender()
@@ -154,6 +162,13 @@ class EstateManagerAI(DistributedObjectAI):
     def removeFromEstate(self, avId):
         self.__ignoreAvatar(avId)
         self.estate.pop(avId, None)
+        av = self.air.doId2do.get(avId)
+        if av is not None and hasattr(av, 'exitEstate') and av.isInEstate():
+            # the other half of __admit's enterEstate: the collision sphere
+            # and the looker go away with the visit.  DistributedToonAI.delete
+            # (:289-291) does the same for an avatar that disconnects, and
+            # exitEstate cannot run twice -- isInEstate is the flag it clears.
+            av.exitEstate()
         for waiting in self.pendingWorlds.values():
             if avId in waiting:
                 waiting.remove(avId)
