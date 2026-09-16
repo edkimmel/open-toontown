@@ -352,6 +352,7 @@ class DistributedHouseAI(DistributedObjectAI):
 
         plantedItems = dict((item[1], item) for item in estateAI.slotItems[self.gardenPos])
         for hardPoint, (x, y, h, plantType) in enumerate(GardenGlobals.estatePlots[self.gardenPos]):
+            x, y, h = self._hardPointPosHpr(x, y, h, plantType)
             item = plantedItems.get(hardPoint)
             if item is not None:
                 self._regeneratePlant(estateAI, hardPoint, x, y, h, item)
@@ -363,6 +364,20 @@ class DistributedHouseAI(DistributedObjectAI):
             plot.setOwnerIndex(self.gardenPos)
             plot.generateWithRequired(self.zoneId)
             self.gardenPlots.append(plot)
+
+    def _hardPointPosHpr(self, x, y, h, plantType):
+        # Flower hard points in `estatePlots` aren't world coordinates at
+        # all -- (x, y) is (box index, slot index) into this same house's
+        # `estateBoxes` entry (box capacities always sum to the flower hard
+        # point count, e.g. [1, 1, 3, 3, 2] -> 10), so a flower plot must
+        # take its position/heading from the box it lives in instead of
+        # the table's own (x, y, h).
+        if plantType == GardenGlobals.FLOWER_TYPE:
+            boxes = GardenGlobals.estateBoxes[self.gardenPos]
+            if 0 <= x < len(boxes):
+                bx, by, bh = boxes[x][:3]
+                return (bx, by, bh)
+        return (x, y, h)
 
     def _regeneratePlant(self, estateAI, hardPoint, x, y, h, item):
         """Rebuild the grown-object DO a persisted `lawnItem` describes,

@@ -989,7 +989,12 @@ class Garden(MagicWord):
         if not 0 <= count <= len(pairs):
             return "Specify a flower collection count between 0 and {}.".format(len(pairs))
 
-        chosen = pairs[:count]
+        # From the end of the sorted pair list, not the start -- pairs[0] is
+        # always (49, 0), the same fixed pair the admin `~garden plant
+        # flower` command plants, so a prefix would make a real plant/grow/
+        # harvest pick of it useless as a controlled *new* variety on top of
+        # a seeded collection.
+        chosen = pairs[-count:] if count else []
         toon.b_setFlowerCollection([f[0] for f in chosen], [f[1] for f in chosen])
         return "Set {}'s flower collection to {} distinct variet{}.".format(
             toon.getName(), count, 'y' if count == 1 else 'ies')
