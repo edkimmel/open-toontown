@@ -11,6 +11,7 @@ from toontown.ai.WelcomeValleyManagerAI import WelcomeValleyManagerAI
 from toontown.building.DistributedTrophyMgrAI import DistributedTrophyMgrAI
 from toontown.catalog.CatalogManagerAI import CatalogManagerAI
 from toontown.effects.FireworkManagerAI import FireworkManagerAI
+from toontown.estate.DistributedBankMgrAI import DistributedBankMgrAI
 from toontown.estate.EstateManagerAI import EstateManagerAI
 from toontown.coghq.CogSuitManagerAI import CogSuitManagerAI
 from toontown.coghq.CountryClubManagerAI import CountryClubManagerAI
@@ -223,6 +224,10 @@ class ToontownAIRepository(ToontownInternalRepository):
         # Generate our estate manager...
         self.estateMgr = EstateManagerAI(self)
         self.estateMgr.generateWithRequired(OTP_ZONE_ID_MANAGEMENT)
+
+        # Generate our bank manager...
+        self.bankMgr = DistributedBankMgrAI(self)
+        self.bankMgr.generateWithRequired(OTP_ZONE_ID_MANAGEMENT)
 
         # Create our firework manager...
         self.fireworkMgr = FireworkManagerAI(self)
