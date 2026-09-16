@@ -11,6 +11,7 @@ from toontown.ai.WelcomeValleyManagerAI import WelcomeValleyManagerAI
 from toontown.building.DistributedTrophyMgrAI import DistributedTrophyMgrAI
 from toontown.catalog.CatalogManagerAI import CatalogManagerAI
 from toontown.estate.EstateManagerAI import EstateManagerAI
+from toontown.fishing.FishManagerAI import FishManagerAI
 from toontown.coghq.CogSuitManagerAI import CogSuitManagerAI
 from toontown.coghq.CountryClubManagerAI import CountryClubManagerAI
 from toontown.coghq.FactoryManagerAI import FactoryManagerAI
@@ -217,6 +218,8 @@ class ToontownAIRepository(ToontownInternalRepository):
         self.estateMgr = EstateManagerAI(self)
         self.estateMgr.generateWithRequired(OTP_ZONE_ID_MANAGEMENT)
 
+        # Create our fish manager...
+        self.fishManager = FishManagerAI(self)
         # Generate our trophy manager...
         self.trophyMgr = DistributedTrophyMgrAI(self)
         self.trophyMgr.generateWithRequired(OTP_ZONE_ID_MANAGEMENT)
