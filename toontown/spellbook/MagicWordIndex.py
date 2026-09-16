@@ -812,6 +812,23 @@ def _residentHouse(air, toon):
     return (None, None)
 
 
+def _residentWorld(air, toon):
+    """The live `EstateWorld` for the toon's own account, the same `worlds`
+    map `_residentHouse` reads -- without requiring a house match, since the
+    fireworks cannon and its show are estate-wide props, not per-house
+    ones.  `None` if the toon is not resident in a live estate."""
+    accountId = getattr(toon, 'DISLid', None)
+    if not accountId:
+        return None
+    estateMgr = _findEstateManager(air)
+    if estateMgr is None:
+        return None
+    world = estateMgr.worlds.get(accountId)
+    if world is None or world.estate is None:
+        return None
+    return world
+
+
 class Cannon(MagicWord):
     desc = ("Turns on the invoker's pinball cannon and drops it, with the target it "
             "shoots at, into the estate the invoker is standing in.  This only enables "
@@ -1650,6 +1667,13 @@ class Fireworks(MagicWord):
             zones = (toon.zoneId,)
         elif hood == "all":
             zones = zoneToStyleDict.keys()
+        elif hood == "estate":
+            if not toon.getHouseId():
+                return "{} has no house.".format(toon.getName())
+            world = _residentWorld(self.air, toon)
+            if world is None:
+                return "{} is not standing in their own live estate.".format(toon.getName())
+            zones = (world.zoneId,)
         else:
             return "Missing hood argument."
         
@@ -1661,6 +1685,45 @@ class Fireworks(MagicWord):
                 count += 1
 
         return f"Started firework {'show' if count == 1 else 'shows'} in {count} {'zone' if count == 1 else 'zones'}!"
+
+
+class FireworksCannon(MagicWord):
+    desc = ("Drops or removes the invoker's estate fireworks cannon -- the "
+            "permanent prop EstateWorldOperation.__populate already "
+            "generates for every estate, not a rental.  '~fireworkscannon' "
+            "or '~fireworkscannon drop' (re)drops it if it is missing; "
+            "'~fireworkscannon remove' takes it away.  Both are idempotent: "
+            "dropping an already-dropped cannon or removing an "
+            "already-removed one does nothing.")
+    execLocation = MagicWordConfig.EXEC_LOC_SERVER
+    accessLevel = 'ADMIN'
+    arguments = [("command", str, False, 'drop')]
+
+    def handleWord(self, invoker, avId, toon, *args):
+        from toontown.estate.EstateWorld import makeFireworksCannon
+
+        command = (args[0] if len(args) > 0 else '') or 'drop'
+        command = str(command).strip().lower()
+        if command not in ('drop', 'remove'):
+            return "Specify drop or remove."
+
+        if not toon.getHouseId():
+            return "{} has no house.".format(toon.getName())
+
+        world = _residentWorld(self.air, toon)
+        if world is None:
+            return "{} is not standing in their own live estate.".format(toon.getName())
+
+        if command == 'remove':
+            if world.fireworksCannon is not None:
+                world.fireworksCannon.requestDelete()
+                world.fireworksCannon = None
+            return "Removed {}'s estate fireworks cannon.".format(toon.getName())
+
+        if world.fireworksCannon is None:
+            world.fireworksCannon = makeFireworksCannon(self.air, world)
+        return "Dropped a fireworks cannon in {}'s estate.".format(toon.getName())
+
 
 class SetSpeedChatStyle(MagicWord):
     # The first version of this word did `from toontown.shtiker.OptionsPage
