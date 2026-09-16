@@ -65,28 +65,31 @@ class DistributedFurnitureManagerAI(DistributedObjectAI):
         self.sendUpdate('setAtticItems', [blob])
 
     def b_setAtticItems(self, blob):
-        self.house.setAtticItems(blob)
+        # the house's own field is `db`, not broadcast (etc/toon.dc:1212),
+        # so it needs its own update to persist -- setAtticItems() alone
+        # only touches this process's copy.
+        self.house.b_setAtticItems(blob)
         self.d_setAtticItems(blob)
 
     def d_setDeletedItems(self, blob):
         self.sendUpdate('setDeletedItems', [blob])
 
     def b_setDeletedItems(self, blob):
-        self.house.setDeletedItems(blob)
+        self.house.b_setDeletedItems(blob)
         self.d_setDeletedItems(blob)
 
     def d_setAtticWallpaper(self, blob):
         self.sendUpdate('setAtticWallpaper', [blob])
 
     def b_setAtticWallpaper(self, blob):
-        self.house.setAtticWallpaper(blob)
+        self.house.b_setAtticWallpaper(blob)
         self.d_setAtticWallpaper(blob)
 
     def d_setAtticWindows(self, blob):
         self.sendUpdate('setAtticWindows', [blob])
 
     def b_setAtticWindows(self, blob):
-        self.house.setAtticWindows(blob)
+        self.house.b_setAtticWindows(blob)
         self.d_setAtticWindows(blob)
 
     def getDirector(self):
@@ -280,7 +283,7 @@ class DistributedFurnitureManagerAI(DistributedObjectAI):
             wallpaper.append(item)
         wallpaper[slot] = item
         blob = wallpaper.getBlob()
-        self.house.setInteriorWallpaper(blob)
+        self.house.b_setInteriorWallpaper(blob)
         if self.interior is not None:
             self.interior.b_setWallpaper(blob)
 
@@ -291,7 +294,7 @@ class DistributedFurnitureManagerAI(DistributedObjectAI):
 
     def __setInteriorWindowList(self, windows):
         blob = windows.getBlob()
-        self.house.setInteriorWindows(blob)
+        self.house.b_setInteriorWindows(blob)
         if self.interior is not None:
             self.interior.b_setWindows(blob)
 
@@ -424,6 +427,13 @@ class DistributedFurnitureManagerAI(DistributedObjectAI):
             self.__generateItem(
                 CatalogFurnitureItem.CatalogFurnitureItem(PhoneFurnitureType),
                 zoneId)
+
+    def generateInteriorItem(self, item, interiorIndex):
+        """Generate a DO for an item already appended to the house's
+        interior list, for a caller that adds furniture after
+        createFurniture already ran once (e.g. a delivered purchase or a
+        debug seed). Reuses the same class dispatch createFurniture uses."""
+        return self.__generateItem(item, self.zoneId, interiorIndex=interiorIndex)
 
     def destroy(self):
         for item in self.items:

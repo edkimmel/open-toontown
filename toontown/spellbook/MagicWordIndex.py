@@ -466,11 +466,22 @@ class Furnish(MagicWord):
         house = self.air.doId2do.get(houseId)
         if house is not None:
             interior = house.getInteriorItemList()
+            startIndex = len(interior)
             for item in (closet, trunk, bank):
                 interior.append(item)
             house.setInteriorItemList(interior)
             for item in atticItems:
                 house.addAtticItem(item)
+
+            # createFurniture (DistributedFurnitureManagerAI.py:412-426) only
+            # runs once, when the house's interior is first generated -- a
+            # house that already has its interior up needs the new items'
+            # DOs generated directly, or the room stays bare even though the
+            # blob above now has them in it.
+            furnitureMgr = getattr(house, 'furnitureMgr', None)
+            if furnitureMgr is not None:
+                for offset, item in enumerate((closet, trunk, bank)):
+                    furnitureMgr.generateInteriorItem(item, startIndex + offset)
         else:
             # The house isn't generated on this AI (the target isn't inside
             # their own estate right now), so there's no live object to call
