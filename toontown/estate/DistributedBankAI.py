@@ -78,8 +78,10 @@ class DistributedBankAI(DistributedFurnitureItemAI):
         self.sendUpdateToAvatarId(avId, 'freeAvatar', [])
 
     def d_setMovie(self, mode, avId):
+        # the field is int16 (etc/toon.dc, DistributedBank.setMovie); the
+        # default bits=16 keeps the value in range
         self.sendUpdate('setMovie', [mode, avId,
-                                     globalClockDelta.getRealNetworkTime(bits=32)])
+                                     globalClockDelta.getRealNetworkTime()])
 
     def __clamp(self, av, amount):
         # the same four limits BankGUI.__updateTransaction applies

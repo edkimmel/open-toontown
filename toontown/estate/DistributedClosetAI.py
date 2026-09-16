@@ -148,8 +148,10 @@ class DistributedClosetAI(DistributedFurnitureItemAI):
                                      topList, botList])
 
     def d_setMovie(self, mode, avId):
+        # the field is int16 (etc/toon.dc, DistributedCloset.setMovie); the
+        # default bits=16 keeps the value in range
         self.sendUpdate('setMovie', [mode, avId,
-                                     globalClockDelta.getRealNetworkTime(bits=32)])
+                                     globalClockDelta.getRealNetworkTime()])
 
     def d_setCustomerDNA(self, avId, dnaString):
         self.sendUpdate('setCustomerDNA', [avId, dnaString])
