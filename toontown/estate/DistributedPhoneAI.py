@@ -8,6 +8,7 @@ from direct.task.Task import Task
 from toontown.catalog import CatalogEmoteItem
 from toontown.catalog import CatalogItem
 from toontown.catalog import CatalogItemBlob
+from toontown.catalog import CatalogItemList
 from toontown.estate import PhoneGlobals
 from toontown.estate.DistributedFurnitureItemAI import DistributedFurnitureItemAI
 from toontown.toonbase import ToontownGlobals
@@ -25,6 +26,7 @@ class DistributedPhoneAI(DistributedFurnitureItemAI):
         self.initialScale = (1.0, 1.0, 1.0)
         self.busy = 0
         self.lastPurchase = None
+        self.lastGiftPurchase = None
 
     def getInitialScale(self):
         return self.initialScale
@@ -37,6 +39,7 @@ class DistributedPhoneAI(DistributedFurnitureItemAI):
         self.ignoreAll()
         self.busy = 0
         self.lastPurchase = None
+        self.lastGiftPurchase = None
         DistributedFurnitureItemAI.delete(self)
 
     def isBusy(self):
@@ -76,17 +79,27 @@ class DistributedPhoneAI(DistributedFurnitureItemAI):
         self.sendUpdateToAvatarId(avId, 'requestPurchaseResponse',
                                   [context, retcode])
 
+    def requestGiftPurchaseMessage(self, context, targetAvId, blob, optional):
+        avId = self.air.getAvatarIdFromSender()
+        self.__purchaseGift(avId, context, targetAvId, bytes(blob), optional)
+
     def validatePurchase(self, av, blob):
         """Matches a client blob against what av was actually offered.
 
         Returns (item, price, retcode).  item is the entry from the avatar's
         own catalog, never the decoded blob, and price comes from that entry,
         so a forged sale flag or price cannot travel with the request.
-        retcode is None when the purchase may go ahead.
+        retcode is None when the purchase may go ahead.  A blob that already
+        carries a gift tag (CatalogItemTypes.py:85) is refused here: that tag
+        is only ever set by the AI itself when it queues a gift
+        (__grantGift below), never legitimately present on an incoming
+        purchase request, so the plain, non-gift path must not honour it.
         """
         item = CatalogItemBlob.decodeVerifiedItem(blob, store=CatalogItem.Customization)
         if item is None:
             return (None, None, ToontownGlobals.P_NotInCatalog)
+        if item.giftTag is not None:
+            return (None, None, ToontownGlobals.P_NotAGift)
         offer, catalogType = self.__findOffer(av, item)
         if offer is None:
             return (None, None, ToontownGlobals.P_NotInCatalog)
@@ -177,6 +190,102 @@ class DistributedPhoneAI(DistributedFurnitureItemAI):
             self.notify.warning('could not charge %s %s for %s' % (av.doId, price, item))
         return ToontownGlobals.P_ItemOnOrder
 
+    def __purchaseGift(self, avId, context, targetAvId, blob, optional):
+        respond = lambda retcode: self.sendUpdateToAvatarId(
+            avId, 'requestGiftPurchaseResponse', [context, retcode])
+        if self.busy != avId:
+            self.air.writeServerEvent('suspicious', avId, 'DistributedPhoneAI.requestGiftPurchaseMessage while not shopping')
+            respond(ToontownGlobals.P_NotShopping)
+            return
+        av = self.air.doId2do.get(avId)
+        if av is None:
+            respond(ToontownGlobals.P_NotShopping)
+            return
+        if self.lastGiftPurchase is not None:
+            lastRequest, lastRetcode = self.lastGiftPurchase
+            if lastRequest == (context, targetAvId, blob):
+                # a resend of the request already answered: same answer, the
+                # gift is queued and charged once
+                respond(lastRetcode)
+                return
+            if lastRequest[0] == context:
+                self.air.writeServerEvent('suspicious', avId, 'DistributedPhoneAI.requestGiftPurchaseMessage reused context %s' % context)
+                respond(ToontownGlobals.P_NotShopping)
+                return
+        item, price, retcode = self.validatePurchase(av, blob)
+        if retcode is None and item.isGift() <= 0:
+            # emblem-priced items refuse gifting (CatalogItem.isGift, :116-120)
+            retcode = ToontownGlobals.P_NotAGift
+        if retcode is not None:
+            self.lastGiftPurchase = ((context, targetAvId, blob), retcode)
+            respond(retcode)
+            return
+        # a gift always waits for the recipient to open their mailbox, even
+        # an item whose ordinary getDeliveryTime() is 0: recordPurchase must
+        # run for the recipient at accept time, never here for the buyer
+        item = copy.copy(item)
+        item.deliveryDate = int(time.time() / 60 + 0.5) + item.getDeliveryTime()
+        resident = self.air.doId2do.get(targetAvId)
+        if resident is not None and hasattr(resident, 'onGiftOrder'):
+            retcode = self.__grantGiftResident(av, resident, item, price)
+            self.lastGiftPurchase = ((context, targetAvId, blob), retcode)
+            respond(retcode)
+            return
+
+        def onRecipientRow(dclass, fields):
+            retcode = self.__grantGiftNonResident(av, targetAvId, fields, item, price)
+            self.lastGiftPurchase = ((context, targetAvId, blob), retcode)
+            respond(retcode)
+
+        # the recipient isn't generated on this AI, so their current gift
+        # schedule/mailbox can only be read back from the database first --
+        # the same non-resident shape Furnish uses for an ungenerated house
+        # (MagicWordIndex.py:565-589), except this is read-modify-write
+        # instead of a wholesale replace, since other gifts may be pending
+        self.air.dbInterface.queryObject(
+            self.air.dbId, targetAvId, onRecipientRow,
+            fieldNames=('setGiftSchedule', 'setMailboxContents'))
+
+    def __grantGiftResident(self, av, resident, item, price):
+        if len(resident.mailboxContents) + len(resident.onGiftOrder) >= ToontownGlobals.MaxMailboxContents:
+            # the gift path's own full-mailbox retcode, distinct from the
+            # ordinary order path's P_NoRoomForItem (CatalogItemPanel.py:499,
+            # CatalogItem.getRequestGiftPurchaseErrorText:186-206)
+            return ToontownGlobals.P_MailboxFull
+        if av.getTotalMoney() < price:
+            return ToontownGlobals.P_NotEnoughMoney
+        resident.onGiftOrder.append(item)
+        resident.b_setGiftSchedule(resident.onGiftOrder)
+        # charge last: a failure here costs the shop, not the shopper
+        if not av.takeMoney(price):
+            self.notify.warning('could not charge %s %s for a gift to %s' % (av.doId, price, resident.doId))
+        return ToontownGlobals.P_ItemOnOrder
+
+    def __grantGiftNonResident(self, av, targetAvId, fields, item, price):
+        if fields is None:
+            # no such avatar to receive the gift; nothing is charged
+            return ToontownGlobals.P_InvalidIndex
+        oldGiftBlob = fields.get('setGiftSchedule', (b'',))[0]
+        oldMailboxBlob = fields.get('setMailboxContents', (b'',))[0]
+        onGiftOrder = CatalogItemList.CatalogItemList(
+            oldGiftBlob, store=CatalogItem.Customization | CatalogItem.DeliveryDate)
+        mailboxContents = CatalogItemList.CatalogItemList(
+            oldMailboxBlob, store=CatalogItem.Customization)
+        if len(mailboxContents) + len(onGiftOrder) >= ToontownGlobals.MaxMailboxContents:
+            return ToontownGlobals.P_MailboxFull
+        if av.getTotalMoney() < price:
+            return ToontownGlobals.P_NotEnoughMoney
+        onGiftOrder.append(item)
+        dclass = self.air.dclassesByName['DistributedToonAI']
+        self.air.dbInterface.updateObject(
+            self.air.dbId, targetAvId, dclass,
+            {'setGiftSchedule': (onGiftOrder.getBlob(),)},
+            oldFields={'setGiftSchedule': (oldGiftBlob,)})
+        # charge last: a failure here costs the shop, not the shopper
+        if not av.takeMoney(price):
+            self.notify.warning('could not charge %s %s for a gift to %s' % (av.doId, price, targetAvId))
+        return ToontownGlobals.P_ItemOnOrder
+
     def __checkIndex(self, av, item):
         """Rejects an out-of-range emote before the grant writes past the end.
 
@@ -220,6 +329,7 @@ class DistributedPhoneAI(DistributedFurnitureItemAI):
         self.ignore(self.air.getAvatarExitEvent(avId))
         self.busy = 0
         self.lastPurchase = None
+        self.lastGiftPurchase = None
         self.d_setMovie(mode, avId)
         if avId in self.air.doId2do:
             self.freeAvatar(avId)
