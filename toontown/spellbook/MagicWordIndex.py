@@ -897,6 +897,29 @@ class Rental(MagicWord):
         return "Rented {} a {} for {} hour(s).".format(toon.getName(), command, hours)
 
 
+_flowerVarietyPairsCache = None
+
+
+def _flowerVarietyPairs():
+    """Every valid (species, varietyIndex) pair for flower species in
+    GardenGlobals.PlantAttributes, species then variety index ascending.
+    `variety` is the 0-based index into PlantAttributes[species]['varieties'],
+    the same value FlowerBase.getValue and GardenGlobals.getFlowerVarietyName /
+    getNumBeansRequired expect -- not a recipe id."""
+    global _flowerVarietyPairsCache
+    if _flowerVarietyPairsCache is None:
+        from toontown.estate import GardenGlobals
+        pairs = []
+        for species in sorted(GardenGlobals.PlantAttributes):
+            attrib = GardenGlobals.PlantAttributes[species]
+            if attrib['plantType'] != GardenGlobals.FLOWER_TYPE:
+                continue
+            for variety in range(len(attrib['varieties'])):
+                pairs.append((species, variety))
+        _flowerVarietyPairsCache = tuple(pairs)
+    return _flowerVarietyPairsCache
+
+
 class Garden(MagicWord):
     aliases = ["gardenstarted"]
     desc = ("Marks the target's garden as started (so the garden page appears), with shovel "
@@ -904,13 +927,11 @@ class Garden(MagicWord):
             "days: 'plant flower|tree|statuary' plants a default into the first empty "
             "matching plot of the invoker's own estate, 'grow [level]' maxes every currently "
             "planted item's growth and water levels, 'reset' empties every planted hard "
-            "point back to a bare plot.")
+            "point back to a bare plot, 'collection <n>' sets the flower collection to "
+            "exactly n distinct varieties without touching the flower basket.")
     execLocation = MagicWordConfig.EXEC_LOC_SERVER
     accessLevel = 'ADMIN'
     arguments = [("command", str, False, ''), ("option", str, False, '')]
-
-    # (species, variety) pairs from GardenGlobals.PlantAttributes.
-    flowers = ((49, 10), (49, 11), (50, 20))
 
     # `~garden plant` defaults -- species 49 variety index 0 is recipe 10
     # (GardenGlobals.py:92,358-359), a single-bean flower; track/level 0 is
@@ -937,6 +958,8 @@ class Garden(MagicWord):
             return self._grow(toon, option)
         if command == 'reset':
             return self._reset(toon)
+        if command == 'collection':
+            return self._collection(toon, option)
 
         # Plain `~garden [shovelSkill]` -- unchanged from before this task.
         try:
@@ -947,15 +970,29 @@ class Garden(MagicWord):
             return "Specify a shovel skill below the next shovel's skill points ({}).".format(
                 GardenGlobals.ShovelAttributes[toon.getShovel()]['skillPts'])
 
-        for species, variety in self.flowers:
-            varieties = [v[0] for v in GardenGlobals.PlantAttributes[species]['varieties']]
-            if variety not in varieties:
+        flowers = _flowerVarietyPairs()[:3]
+        for species, variety in flowers:
+            if variety >= len(GardenGlobals.PlantAttributes[species]['varieties']):
                 return f"Bad flower variety {variety} for species {species}."
 
         toon.b_setGardenStarted(1)
         toon.b_setShovelSkill(shovelSkill)
-        toon.b_setFlowerCollection([f[0] for f in self.flowers], [f[1] for f in self.flowers])
-        return f"Started {toon.getName()}'s garden with {len(self.flowers)} flowers and shovel skill {shovelSkill}."
+        toon.b_setFlowerCollection([f[0] for f in flowers], [f[1] for f in flowers])
+        return f"Started {toon.getName()}'s garden with {len(flowers)} flowers and shovel skill {shovelSkill}."
+
+    def _collection(self, toon, option):
+        pairs = _flowerVarietyPairs()
+        try:
+            count = int(option) if option else 0
+        except ValueError:
+            return "Specify a flower collection count between 0 and {}.".format(len(pairs))
+        if not 0 <= count <= len(pairs):
+            return "Specify a flower collection count between 0 and {}.".format(len(pairs))
+
+        chosen = pairs[:count]
+        toon.b_setFlowerCollection([f[0] for f in chosen], [f[1] for f in chosen])
+        return "Set {}'s flower collection to {} distinct variet{}.".format(
+            toon.getName(), count, 'y' if count == 1 else 'ies')
 
     def _residentHouse(self, toon):
         """The invoker's own live house and estate, once its garden has been
@@ -1112,12 +1149,7 @@ class Flowers(MagicWord):
     accessLevel = 'ADMIN'
     arguments = [("count", str, False, '')]
 
-    # Same (species, variety) pairs Garden.flowers uses.
-    flowers = ((49, 10), (49, 11), (50, 20))
-
     def handleWord(self, invoker, avId, toon, *args):
-        from toontown.estate import GardenGlobals
-
         raw = (args[0] if len(args) > 0 else '') or ''
         raw = str(raw).strip()
         try:
@@ -1127,15 +1159,11 @@ class Flowers(MagicWord):
         if count < 0:
             return "Specify a non-negative number of flowers."
 
-        for species, variety in self.flowers:
-            varieties = [v[0] for v in GardenGlobals.PlantAttributes[species]['varieties']]
-            if variety not in varieties:
-                return "Bad flower variety {} for species {}.".format(variety, species)
-
+        flowers = _flowerVarietyPairs()
         maxBasket = toon.getMaxFlowerBasket() if hasattr(toon, 'getMaxFlowerBasket') else count
         count = min(count, maxBasket)
-        speciesList = [self.flowers[i % len(self.flowers)][0] for i in range(count)]
-        varietyList = [self.flowers[i % len(self.flowers)][1] for i in range(count)]
+        speciesList = [flowers[i % len(flowers)][0] for i in range(count)]
+        varietyList = [flowers[i % len(flowers)][1] for i in range(count)]
         toon.b_setFlowerBasket(speciesList, varietyList)
         return "Filled {}'s flower basket with {} flower(s).".format(toon.getName(), count)
 
