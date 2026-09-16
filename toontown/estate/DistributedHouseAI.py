@@ -315,18 +315,34 @@ class DistributedHouseAI(DistributedObjectAI):
             plot.generateWithRequired(self.zoneId)
             self.gardenPlots.append(plot)
 
+    # No model in the box's own art (planterA/B/C/D,
+    # phase_5.5/models/estate/) exposes a per-slot locator -- every hole a
+    # box can hold flowers in is baked into a single unnamed "soil" mesh,
+    # and neither DistributedGardenBox nor DistributedGardenPlot ever look
+    # one up; the client just trusts whatever position/heading the AI puts
+    # on each plot DO. So a box's later slots (>0) have no authoritative
+    # world offset to mirror -- this lays them out evenly along the box's
+    # own heading instead, spaced far enough apart that a shovel-radius
+    # toon can stand at one slot without also touching its neighbor.
+    _FLOWER_SLOT_SPACING = 2.5
+
     def _hardPointPosHpr(self, x, y, h, plantType):
         # Flower hard points in `estatePlots` aren't world coordinates at
         # all -- (x, y) is (box index, slot index) into this same house's
         # `estateBoxes` entry (box capacities always sum to the flower hard
         # point count, e.g. [1, 1, 3, 3, 2] -> 10), so a flower plot must
         # take its position/heading from the box it lives in instead of
-        # the table's own (x, y, h).
+        # the table's own (x, y, h). The box anchor alone only covers slot
+        # 0 -- every other slot in a multi-capacity box needs its own
+        # offset along the box's heading (see _FLOWER_SLOT_SPACING) so it
+        # doesn't collapse onto slot 0's position.
         if plantType == GardenGlobals.FLOWER_TYPE:
             boxes = GardenGlobals.estateBoxes[self.gardenPos]
             if 0 <= x < len(boxes):
                 bx, by, bh = boxes[x][:3]
-                return (bx, by, bh)
+                theta = math.radians(bh)
+                dist = y * self._FLOWER_SLOT_SPACING
+                return (bx + dist * math.cos(theta), by + dist * math.sin(theta), bh)
         return (x, y, h)
 
     def _regeneratePlant(self, estateAI, hardPoint, x, y, h, item):
