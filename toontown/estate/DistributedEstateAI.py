@@ -5,6 +5,7 @@ from direct.distributed.DistributedObjectAI import DistributedObjectAI
 
 from toontown.estate import HouseGlobals
 from toontown.estate.EstateProvisioner import NUM_HOUSE_SLOTS, fieldValue
+from toontown.toonbase import ToontownGlobals
 
 
 class DistributedEstateAI(DistributedObjectAI):
@@ -44,6 +45,11 @@ class DistributedEstateAI(DistributedObjectAI):
         # treasure doIds to report; send the empty list so the attribute
         # always exists by the time a cannon can be fired.
         self.d_setTreasureIds([])
+        self.__armRentalExpiry()
+
+    def delete(self):
+        taskMgr.remove(self.__rentalTaskName())
+        DistributedObjectAI.delete(self)
 
     def getIdList(self):
         return self.idList
@@ -146,6 +152,42 @@ class DistributedEstateAI(DistributedObjectAI):
             base = now
         self.b_setRentalType(rentalType)
         self.b_setRentalTimeStamp(base + durationMinutes * 60)
+        self.__armRentalExpiry()
+
+    def __rentalTaskName(self):
+        return 'estate-rental-expiry-%s' % self.doId
+
+    def __armRentalExpiry(self):
+        # Renewing (rentItem) or reactivating (announceGenerate) both call
+        # this, so cancel any previous timer before arming the new one --
+        # a rental never stacks two pending expiry tasks.
+        taskMgr.remove(self.__rentalTaskName())
+        if self.rentalType == 0:
+            return
+        remaining = self.rentalTimeStamp - int(time.time())
+        if remaining <= 0:
+            # The deadline already passed while the estate was unloaded --
+            # the same offline catch-up rentItem's caller sees for
+            # lastEpochTimeStamp -- so expire now instead of arming a
+            # negative delay.
+            self.__rentalExpired()
+            return
+        taskMgr.doMethodLater(remaining, self.__rentalExpired,
+                              self.__rentalTaskName(), extraArgs=[])
+
+    def __rentalExpired(self):
+        rentalType = self.rentalType
+        self.b_setRentalType(0)
+        if rentalType == ToontownGlobals.RentalCannon:
+            self.sendUpdate('cannonsOver', [])
+        elif rentalType == ToontownGlobals.RentalGameTable:
+            self.sendUpdate('gameTableOver', [])
+        self._rentalTeardown(rentalType)
+
+    def _rentalTeardown(self, rentalType):
+        # Filled in when the cannon/target DO lifecycle lands: force any
+        # occupant out and requestDelete the pair for a cannon rental.
+        pass
 
     def _setSlotToonId(self, slot, avId):
         self.slotToonIds[slot] = avId
