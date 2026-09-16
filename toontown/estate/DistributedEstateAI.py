@@ -108,11 +108,36 @@ class DistributedEstateAI(DistributedObjectAI):
     def getRentalTimeStamp(self):
         return self.rentalTimeStamp
 
+    def b_setRentalTimeStamp(self, timeStamp):
+        self.setRentalTimeStamp(timeStamp)
+        self.d_setRentalTimeStamp(timeStamp)
+
+    def d_setRentalTimeStamp(self, timeStamp):
+        self.sendUpdate('setRentalTimeStamp', [timeStamp])
+
     def setRentalType(self, rentalType):
         self.rentalType = rentalType
 
     def getRentalType(self):
         return self.rentalType
+
+    def b_setRentalType(self, rentalType):
+        self.setRentalType(rentalType)
+        self.d_setRentalType(rentalType)
+
+    def d_setRentalType(self, rentalType):
+        self.sendUpdate('setRentalType', [rentalType])
+
+    def rentItem(self, rentalType, durationMinutes):
+        now = int(time.time())
+        if rentalType == self.rentalType and self.rentalTimeStamp > now:
+            # Renewing the same rental before it expires extends the
+            # existing deadline instead of restarting the clock.
+            base = self.rentalTimeStamp
+        else:
+            base = now
+        self.b_setRentalType(rentalType)
+        self.b_setRentalTimeStamp(base + durationMinutes * 60)
 
     def _setSlotToonId(self, slot, avId):
         self.slotToonIds[slot] = avId
