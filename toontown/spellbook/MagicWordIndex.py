@@ -555,6 +555,64 @@ class Furnish(MagicWord):
             message += " (already had {}, skipped)".format(', '.join(skipParts))
         return message + "."
 
+class Wardrobe(MagicWord):
+    desc = "Debug use only: adds gender-correct tops and bottoms to the target's closet lists until it owns at least count of each."
+    execLocation = MagicWordConfig.EXEC_LOC_SERVER
+    accessLevel = 'ADMIN'
+    arguments = [("count", int, False, 2)]
+
+    def handleWord(self, invoker, avId, toon, *args):
+        from toontown.toon import ToonDNA
+
+        count = args[0]
+        if not 1 <= count <= 255:
+            return "Specify a count between 1 and 255."
+
+        # DistributedNPCTailorAI.setDNA (:126-144) only grants a garment
+        # through a ClothingTicket or 'free-clothes', so a toon otherwise
+        # owns nothing but the outfit it is wearing (clothesTopsList /
+        # clothesBottomsList stay empty). Reuse Furnish's gender lookup
+        # (getStyle().getGender()) so the seeded pieces fit the avatar.
+        gender = toon.getStyle().getGender()
+
+        topsList = list(toon.getClothesTopsList())
+        ownedTops = set(tuple(topsList[i:i + 4]) for i in range(0, len(topsList), 4))
+        addedTops = 0
+        attempts = 0
+        while len(ownedTops) < count and attempts < count * 20:
+            attempts += 1
+            top = ToonDNA.getRandomTop(gender)
+            if top in ownedTops:
+                continue
+            ownedTops.add(top)
+            topsList.extend(top)
+            addedTops += 1
+
+        bottomsList = list(toon.getClothesBottomsList())
+        ownedBottoms = set(tuple(bottomsList[i:i + 2]) for i in range(0, len(bottomsList), 2))
+        addedBottoms = 0
+        attempts = 0
+        while len(ownedBottoms) < count and attempts < count * 20:
+            attempts += 1
+            bottom = ToonDNA.getRandomBottom(gender)
+            if bottom in ownedBottoms:
+                continue
+            ownedBottoms.add(bottom)
+            bottomsList.extend(bottom)
+            addedBottoms += 1
+
+        needed = len(topsList) // 4 + len(bottomsList) // 2
+        if needed > toon.getMaxClothes():
+            toon.b_setMaxClothes(needed)
+
+        if addedTops:
+            toon.b_setClothesTopsList(topsList)
+        if addedBottoms:
+            toon.b_setClothesBottomsList(bottomsList)
+
+        return "{} now owns {} top(s) and {} bottom(s) ({} top(s), {} bottom(s) added).".format(
+            toon.getName(), len(ownedTops), len(ownedBottoms), addedTops, addedBottoms)
+
 class Disguise(MagicWord):
     aliases = ["cogsuit"]
     desc = "Gives the target a complete cog disguise for one department and unlocks the disguise page."
