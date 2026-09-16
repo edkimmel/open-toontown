@@ -15,10 +15,10 @@ class DistributedTrunkAI(DistributedClosetAI):
     notify = DirectNotifyGlobal.directNotify.newCategory('DistributedTrunkAI')
 
     _FAMILIES = {
-        ToonDNA.HAT: ('getHatList', 'b_setHatList', 'b_setHat'),
-        ToonDNA.GLASSES: ('getGlassesList', 'b_setGlassesList', 'b_setGlasses'),
-        ToonDNA.BACKPACK: ('getBackpackList', 'b_setBackpackList', 'b_setBackpack'),
-        ToonDNA.SHOES: ('getShoesList', 'b_setShoesList', 'b_setShoes'),
+        ToonDNA.HAT: ('getHatList', 'b_setHatList', 'b_setHat', 'getHat'),
+        ToonDNA.GLASSES: ('getGlassesList', 'b_setGlassesList', 'b_setGlasses', 'getGlasses'),
+        ToonDNA.BACKPACK: ('getBackpackList', 'b_setBackpackList', 'b_setBackpack', 'getBackpack'),
+        ToonDNA.SHOES: ('getShoesList', 'b_setShoesList', 'b_setShoes', 'getShoes'),
     }
 
     def __init__(self, air, furnitureMgr, item, interiorIndex=None):
@@ -120,10 +120,15 @@ class DistributedTrunkAI(DistributedClosetAI):
             self.__reject(avId, 'removeItem names an unknown trunk family: %s' % which)
             self.d_resetItemLists()
             return
-        getListName, bSetListName, _ = family
+        getListName, bSetListName, _, getWornName = family
         # the client only offers the trash can while it has a replacement
-        # to swap to (DistributedTrunk.py:271-280); do not trust it
-        if len(getattr(av, getListName)()) <= 3:
+        # to swap to (DistributedTrunk.py:271-280); the replacement can be
+        # the worn accessory itself, so a lone stored item is safe to
+        # remove as long as something real is worn (TrunkGUI.py:244).
+        # Do not trust the client either way.
+        storedCount = len(getattr(av, getListName)()) // 3
+        wornIsReal = tuple(getattr(av, getWornName)()) != (0, 0, 0)
+        if storedCount <= 1 and not wornIsReal:
             self.d_resetItemLists()
             return
         if not av.removeItemInAccessoriesList(which, idx, texture, colour):
