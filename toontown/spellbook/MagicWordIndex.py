@@ -1753,6 +1753,58 @@ class FireworksCannon(MagicWord):
         return "Dropped a fireworks cannon in {}'s estate.".format(toon.getName())
 
 
+class Pond(MagicWord):
+    desc = ("Regenerates or removes the invoker's estate fishing pond --  "
+            "the permanent pond, spots and targets EstateWorldOperation."
+            "__populate already generates for every estate. '~pond' or "
+            "'~pond drop' (re)drops it if it is missing; '~pond remove' "
+            "takes it away along with its spots and targets. Both are "
+            "idempotent, the same shape as '~fireworkscannon'.")
+    execLocation = MagicWordConfig.EXEC_LOC_SERVER
+    accessLevel = 'ADMIN'
+    arguments = [("command", str, False, 'drop')]
+
+    def handleWord(self, invoker, avId, toon, *args):
+        from toontown.estate.EstateWorld import makeFishingPond, teardownFishingPond
+
+        command = (args[0] if len(args) > 0 else '') or 'drop'
+        command = str(command).strip().lower()
+        if command not in ('drop', 'remove'):
+            return "Specify drop or remove."
+
+        if not toon.getHouseId():
+            return "{} has no house.".format(toon.getName())
+
+        world = _residentWorld(self.air, toon)
+        if world is None:
+            return "{} is not standing in their own live estate.".format(toon.getName())
+
+        if command == 'remove':
+            teardownFishingPond(world)
+            return "Removed {}'s estate fishing pond.".format(toon.getName())
+
+        if world.fishingPond is None:
+            makeFishingPond(self.air, world)
+        return "Dropped a fishing pond in {}'s estate.".format(toon.getName())
+
+
+class Rod(MagicWord):
+    desc = "Sets the target's fishing rod, 0..FishGlobals.MaxRodId."
+    execLocation = MagicWordConfig.EXEC_LOC_SERVER
+    accessLevel = 'ADMIN'
+    arguments = [("rodId", int, False, 0)]
+
+    def handleWord(self, invoker, avId, toon, *args):
+        from toontown.fishing import FishGlobals
+
+        rodId = args[0]
+        if not 0 <= rodId <= FishGlobals.MaxRodId:
+            return "Specify a rod id between 0 and {}.".format(FishGlobals.MaxRodId)
+
+        toon.b_setFishingRod(rodId)
+        return "Set {}'s fishing rod to {}.".format(toon.getName(), rodId)
+
+
 class SetSpeedChatStyle(MagicWord):
     # The first version of this word did `from toontown.shtiker.OptionsPage
     # import speedChatStyles` to bounds-check/name the index -- OptionsPage.py is

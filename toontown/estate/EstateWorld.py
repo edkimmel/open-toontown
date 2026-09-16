@@ -9,6 +9,19 @@ from toontown.estate.EstateProvisioner import NUM_HOUSE_SLOTS
 WHEELBARROW_POS = (-142.586, 4.353, 0.025)
 FIREWORKS_CANNON_OFFSET = (10.0, 0.0, 0.0)
 
+# The estate's four fishing_spot props, (x, y, z, h, p, r), lifted from
+# resources/phase_5.5/dna/estate_1.dna:6-25 -- the "fishing_pond_1" group's
+# four "fishing_spot_DNARoot" props, in file order. The AI never parses the
+# estate's DNA (dnaDataMap is built for hood zones only,
+# ToontownAIRepository.py:258-263), so these are module constants, the same
+# WHEELBARROW_POS pattern above.
+FISHING_SPOT_POSES = (
+    (49.1029, -124.805, 0.344704, 90, 0, 0),
+    (46.5222, -134.739, 0.390713, 75, 0, 0),
+    (41.31, -144.559, 0.375978, 45, 0, 0),
+    (46.8254, -113.682, 0.46015, 135, 0, 0),
+)
+
 
 def makeFireworksCannon(air, world):
     """Generate the estate's one fireworks cannon into its zone, at a fixed
@@ -26,6 +39,52 @@ def makeFireworksCannon(air, world):
     return cannon
 
 
+def makeFishingPond(air, world):
+    """Generate the estate's one fishing pond, its four spots and its
+    targets into the estate zone -- permanent and always generated, the
+    fireworks-cannon pattern above. The pond's area is
+    ToontownGlobals.MyEstate, the key into FishingTargetGlobals and
+    FishGlobals.__pondInfoDict, not the allocated zone the pond, its spots
+    and its targets are actually generated into (open question (g))."""
+    from toontown.ai.ToontownAIRepository import makeFishingTargets
+    from toontown.fishing.DistributedFishingPondAI import DistributedFishingPondAI
+    from toontown.safezone.DistributedFishingSpotAI import DistributedFishingSpotAI
+    from toontown.toonbase import ToontownGlobals
+
+    pond = DistributedFishingPondAI(air)
+    pond.setArea(ToontownGlobals.MyEstate)
+    pond.generateWithRequired(world.zoneId)
+
+    spots = []
+    for x, y, z, h, p, r in FISHING_SPOT_POSES:
+        spot = DistributedFishingSpotAI(air, pond.doId, x, y, z, h, p, r)
+        spot.generateWithRequired(world.zoneId)
+        spots.append(spot)
+
+    world.fishingPond = pond
+    world.fishingSpots = spots
+    world.fishingTargets = makeFishingTargets(air, pond)
+    return pond
+
+
+def teardownFishingPond(world):
+    """Remove the estate's fishing pond, its spots and its targets, spots
+    and targets first so the pond is the last of the three to go -- shared
+    by EstateWorld.destroy and the ~pond magic word so there is exactly one
+    teardown order."""
+    for spot in world.fishingSpots:
+        spot.requestDelete()
+    world.fishingSpots = []
+
+    for target in world.fishingTargets:
+        target.requestDelete()
+    world.fishingTargets = []
+
+    if world.fishingPond is not None:
+        world.fishingPond.requestDelete()
+        world.fishingPond = None
+
+
 class EstateWorld:
     """One account's estate while it is live: the zone it was generated in,
     the objects activated there, and the avatars standing in it.  The estate
@@ -41,6 +100,9 @@ class EstateWorld:
         self.houses = []
         self.occupants = []
         self.fireworksCannon = None
+        self.fishingPond = None
+        self.fishingSpots = []
+        self.fishingTargets = []
 
     def addOccupant(self, avId):
         if avId not in self.occupants:
@@ -66,6 +128,8 @@ class EstateWorld:
         if self.fireworksCannon is not None:
             self.fireworksCannon.requestDelete()
             self.fireworksCannon = None
+
+        teardownFishingPond(self)
 
         if self.estate is not None:
             self.estate.requestDelete()
@@ -196,6 +260,11 @@ class EstateWorldOperation:
         # regardless of how many house slots are occupied.
         if world.fireworksCannon is None:
             world.fireworksCannon = makeFireworksCannon(self.air, world)
+
+        # The fishing pond is the same shape -- one per estate, permanent,
+        # independent of house-slot occupancy.
+        if world.fishingPond is None:
+            makeFishingPond(self.air, world)
 
         self.__finish()
 

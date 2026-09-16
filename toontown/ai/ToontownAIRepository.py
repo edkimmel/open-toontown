@@ -41,6 +41,9 @@ from toontown.pets.PetManagerAI import PetManagerAI
 from toontown.quest.QuestManagerAI import QuestManagerAI
 from toontown.racing import RaceGlobals
 from toontown.fishing.DistributedFishingPondAI import DistributedFishingPondAI
+from toontown.safezone.DistributedFishingSpotAI import DistributedFishingSpotAI
+from toontown.fishing.DistributedFishingTargetAI import DistributedFishingTargetAI
+from toontown.fishing import FishingTargetGlobals
 from toontown.racing.DistributedLeaderBoardAI import DistributedLeaderBoardAI
 from toontown.racing.DistributedRacePadAI import DistributedRacePadAI
 from toontown.racing.DistributedStartingBlockAI import DistributedStartingBlockAI
@@ -57,6 +60,42 @@ from toontown.toonbase import ToontownGlobals
 from toontown.tutorial.TutorialManagerAI import TutorialManagerAI
 from toontown.uberdog.DistributedInGameNewsMgrAI import DistributedInGameNewsMgrAI
 import os
+
+
+def _findFishingSpotProps(air, dnaData, pond):
+    """Recurse dnaData the same way findFishingPonds does, building one
+    DistributedFishingSpotAI per fishing_spot prop found. A plain function
+    (not a bound method) so EstateWorld.makeFishingPond can build its own
+    spots from module constants without needing this recursion, while
+    still sharing makeFishingTargets below."""
+    spots = []
+    name = dnaData.getName()
+    if name and 'fishing_spot' in name:
+        x, y, z = dnaData.getPos()
+        h, p, r = dnaData.getHpr()
+        spot = DistributedFishingSpotAI(air, pond.doId, x, y, z, h, p, r)
+        spot.generateWithRequired(pond.zoneId)
+        spots.append(spot)
+    else:
+        for i in range(dnaData.getNumChildren()):
+            spots.extend(_findFishingSpotProps(air, dnaData.at(i), pond))
+
+    return spots
+
+
+def makeFishingTargets(air, pond):
+    """Build FishingTargetGlobals.getNumTargets(pond.getArea()) targets for
+    pond -- the area is the canonical zone id the target table is keyed on
+    (FishingTargetGlobals.py:145-154), never pond.zoneId. Shared between
+    findFishingSpots (playground ponds) and EstateWorld.makeFishingPond (the
+    estate pond) so there is exactly one target-count policy."""
+    targets = []
+    for i in range(FishingTargetGlobals.getNumTargets(pond.getArea())):
+        target = DistributedFishingTargetAI(air, pond.doId)
+        target.generateWithRequired(pond.zoneId)
+        targets.append(target)
+
+    return targets
 
 
 class ToontownAIRepository(ToontownInternalRepository):
@@ -494,7 +533,9 @@ class ToontownAIRepository(ToontownInternalRepository):
         return fishingPonds, fishingPondGroups
 
     def findFishingSpots(self, dnaData, pond):
-        return []  # TODO
+        fishingSpots = _findFishingSpotProps(self, dnaData, pond)
+        fishingSpots.extend(makeFishingTargets(self, pond))
+        return fishingSpots
 
     def findPartyHats(self, dnaData, zoneId):
         return []  # TODO
