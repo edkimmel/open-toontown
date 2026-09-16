@@ -92,6 +92,13 @@ class DistributedFishingSpotAI(DistributedObjectAI):
         avId = self.air.getAvatarIdFromSender()
         if not self.__isOccupant(avId, 'doCast'):
             return
+        if self.castInFlight:
+            # the client only offers the cast button from enterWaiting's
+            # __showCastGui (DistributedFishingSpot.py:427-441), which is not
+            # re-entered until a movie resolves the outstanding cast, so a
+            # stock client has no way to send a second doCast before then
+            self.notify.warning('doCast() - avatar %s already has a cast in flight' % avId)
+            return
         av = self.air.doId2do.get(avId)
         if av is None:
             self.notify.warning('doCast() - unknown avatar %s' % avId)
