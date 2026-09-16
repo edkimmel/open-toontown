@@ -14,12 +14,16 @@ class DistributedGardenPlotAI(DistributedLawnDecorAI):
     `gardenPos` (DistributedHouseAI.createGarden).
 
     `plantFlower`/`plantGagTree`/`plantStatuary`/`plantToonStatuary`/
-    `plantNothing` (etc/toon.dc:2688-2692) are only honored for the owner,
-    and only inside the one-avatar session `plotEntered` grants (`self.busy`,
-    landed in B2) -- the client's own gate
+    `plantNothing` (etc/toon.dc:2688-2692) are only honored for the owner --
+    no `plotEntered` session required, since the real client walk-in path
+    never sends one (`DistributedGardenPlot.handleEnterPlot` overrides the
+    base class's `plotEntered`-sending version without calling it,
+    `DistributedGardenPlot.py:85-88` vs `DistributedLawnDecor.py:129-131`),
+    matching `waterPlant`/`removeItem`/`requestHarvest`'s already-ownership-
+    only gate.  A concurrent session (`self.busy` held by some other avatar)
+    still refuses.  The client's own gate
     (`DistributedGardenPlot.py:109-113`'s `canBePlanted`) is a UI convenience,
-    not a security boundary, the same reasoning `test_lawn_decor_ai.py`
-    already applies to `plotEntered`/`removeItem`.  A successful plant
+    not a security boundary.  A successful plant
     replaces this plot DO with the grown-object DO
     (`DistributedFlowerAI`/`DistributedGagTreeAI`/`DistributedStatuaryAI`/
     `DistributedToonStatuaryAI`) at the same zone/position/heading/
@@ -31,9 +35,10 @@ class DistributedGardenPlotAI(DistributedLawnDecorAI):
 
     def _sessionToon(self):
         """The sending avatar and its `DistributedToonAI`, or `(0, None)` if
-        the sender is not the owner mid-`plotEntered` session."""
+        the sender is not the owner, or another avatar already holds the
+        `busy` session (a walk-in plant never opens one itself)."""
         avId = self.air.getAvatarIdFromSender()
-        if avId != self.getOwnerAvId() or self.busy != avId:
+        if avId != self.getOwnerAvId() or (self.busy and self.busy != avId):
             return (0, None)
         return (avId, self.air.doId2do.get(avId))
 
