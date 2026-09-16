@@ -63,6 +63,14 @@ class DistributedEstateAI(DistributedObjectAI):
     def getLastEpochTimeStamp(self):
         return self.lastEpochTimeStamp
 
+    def b_setLastEpochTimeStamp(self, timeStamp):
+        self.setLastEpochTimeStamp(timeStamp)
+        self.d_setLastEpochTimeStamp(timeStamp)
+
+    def d_setLastEpochTimeStamp(self, timeStamp):
+        # required airecv db, same push-to-db pattern as d_setSlotItems.
+        self.sendUpdate('setLastEpochTimeStamp', [timeStamp])
+
     def setRentalTimeStamp(self, timeStamp):
         self.rentalTimeStamp = timeStamp
 
