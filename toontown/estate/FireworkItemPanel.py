@@ -9,11 +9,15 @@ from . import FireworksGui
 class FireworkItemPanel(DirectFrame):
 
     def __init__(self, itemName, itemNum, *extraArgs):
-        self.gui = extraArgs[0][0]
-        self.type = extraArgs[0][1][itemNum]
-        self.shootEvent = extraArgs[0][2]
-        self.name = FireworkGlobals.Names[self.type]
+        gui = extraArgs[0][0]
+        itemType = extraArgs[0][1][itemNum]
+        shootEvent = extraArgs[0][2]
+        itemTypeName = FireworkGlobals.Names[itemType]
         DirectFrame.__init__(self, image=DGG.getDefaultDialogGeom(), image_color=(0.75, 0.75, 0.75, 1), image_scale=(0.25, 0, 0.25), relief=None)
+        self.gui = gui
+        self.type = itemType
+        self.shootEvent = shootEvent
+        self.name = itemTypeName
         self.initialiseoptions(FireworkItemPanel)
         self.load()
         return
