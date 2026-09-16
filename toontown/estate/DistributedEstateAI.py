@@ -147,6 +147,17 @@ class DistributedEstateAI(DistributedObjectAI):
     def getSlot5Items(self):
         return self.slotItems[5]
 
+    def b_setSlotItems(self, slot, items):
+        getattr(self, 'setSlot%dItems' % slot)(items)
+        self.d_setSlotItems(slot, items)
+
+    def d_setSlotItems(self, slot, items):
+        # setSlotNItems has no broadcast keyword (etc/toon.dc:1185-1195), but
+        # sendUpdate is still how an AI pushes a `db` field to the database --
+        # the same pattern DistributedToonAI.d_setInventory uses for the
+        # equally broadcast-less setInventory (etc/toon.dc:460).
+        self.sendUpdate('setSlot%dItems' % slot, [items])
+
     def requestServerTime(self):
         avId = self.air.getAvatarIdFromSender()
         serverTime = int(time.time() % HouseGlobals.DAY_NIGHT_PERIOD)
