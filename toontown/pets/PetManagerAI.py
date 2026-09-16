@@ -141,3 +141,66 @@ class PetManagerAI:
                                               {'setPetId': (petId,)})
         if callback is not None:
             callback(petId)
+
+    def deleteToonsPet(self, ownerId, callback=None):
+        # Give up the toon's pet. Reached from the pet shop's return counter
+        # (DistributedNPCPetclerkAI.py:126), from the same clerk's adoption
+        # when the toon already owns a pet (:104-105), and from the toon
+        # itself (DistributedToonAI.py:3030-3033). No money moves either way
+        # -- the clerk refunds nothing, and neither does this.
+        #
+        # An offline owner is read off its database row the way
+        # EstateProvisioner reads an avatar it is provisioning for
+        # (:132-133); only setPetId is needed.
+        av = self.air.doId2do.get(ownerId)
+        if av is not None:
+            self.__deletePet(ownerId, av.getPetId(), av, callback)
+            return
+        self.air.dbInterface.queryObject(self.air.dbId, ownerId,
+                                         lambda dclass, fields: self.__handleOwnerRetrieved(ownerId, fields, callback),
+                                         fieldNames=('setPetId',))
+
+    def __handleOwnerRetrieved(self, ownerId, fields, callback=None):
+        if not fields:
+            self.notify.warning('could not read avatar %s!' % ownerId)
+            if callback is not None:
+                callback()
+            return
+        self.__deletePet(ownerId, fields.get('setPetId', (0,))[0], None, callback)
+
+    def __deletePet(self, ownerId, petId, av=None, callback=None):
+        if not petId:
+            # the shape DistributedToonAI.deletePet:3030-3032 already logs,
+            # reached here as well for an owner whose pet is already gone
+            self.notify.warning("avatar %s doesn't have a pet to delete!" % ownerId)
+            if callback is not None:
+                callback()
+            return
+        # The pet goes first and the owner is unlinked second. A failure
+        # between the two then leaves a pet nobody points at -- recoverable,
+        # since the row still names its owner -- rather than a petId pointing
+        # at nothing, which a client treats as a promise that the doId
+        # resolves (DistributedToon.setPetId:1718-1733, and the pet handle
+        # ToontownClientRepository.py:925-955 builds from it).
+        pet = self.air.doId2do.get(petId)
+        if pet is not None:
+            if pet.__class__.__name__ == 'DistributedPetAI':
+                # requestDelete stamps the last-seen timestamp the client's
+                # offline mood reads from and is guarded against the second
+                # call the brain may already have scheduled on its way out
+                # (DistributedPetAI.py:544-553, PetBrain.py:555-562).
+                pet.requestDelete()
+            else:
+                self.notify.warning('avatar %s: object %s is not a pet!' % (ownerId, petId))
+        # The database row is deliberately left behind rather than destroyed.
+        # Nothing in this game deletes a database object -- estates and houses
+        # never are -- so an orphaned row costs nothing, stays auditable, and
+        # cannot take the wrong object with it.
+        if av is not None:
+            av.b_setPetId(0)
+        else:
+            self.air.dbInterface.updateObject(self.air.dbId, ownerId,
+                                              self.air.dclassesByName['DistributedToonAI'],
+                                              {'setPetId': (0,)})
+        if callback is not None:
+            callback()
