@@ -1825,6 +1825,103 @@ class Tank(MagicWord):
         return "Set {}'s max fish tank to {}.".format(toon.getName(), maxTank)
 
 
+class Pet(MagicWord):
+    desc = ("'info' prints the invoker's petId and, when the pet is "
+            "generated, its name, dominant mood and traits; 'adopt [seed]' "
+            "calls PetManagerAI.createNewPetFromSeed directly with a fixed "
+            "or given seed, seeding a doodle without driving PetshopGUI; "
+            "'remove' calls PetManagerAI.deleteToonsPet.")
+    execLocation = MagicWordConfig.EXEC_LOC_SERVER
+    accessLevel = 'ADMIN'
+    arguments = [("command", str, False, 'info')]
+
+    # An arbitrary, fixed seed so a bare '~pet adopt' always produces the
+    # same doodle -- PetUtil.getPetInfoFromSeed is a pure function of
+    # (seed, safeZoneId).
+    DefaultSeed = 1
+
+    def handleWord(self, invoker, avId, toon, *args):
+        from toontown.toonbase import ToontownGlobals
+
+        command = (args[0] if len(args) > 0 else '') or 'info'
+        parts = str(command).strip().split()
+        sub = parts[0].lower() if parts else 'info'
+        petMgr = getattr(self.air, 'petMgr', None)
+
+        if sub == 'adopt':
+            if petMgr is None:
+                return "No pet manager on this AI."
+            if len(parts) > 1:
+                try:
+                    seed = int(parts[1])
+                except ValueError:
+                    return "Specify a numeric seed."
+            else:
+                seed = self.DefaultSeed
+            petMgr.createNewPetFromSeed(avId, seed, safeZoneId=ToontownGlobals.ToontownCentral)
+            return "Adopted {} a pet from seed {}.".format(toon.getName(), seed)
+
+        if sub == 'remove':
+            if petMgr is None:
+                return "No pet manager on this AI."
+            petMgr.deleteToonsPet(avId)
+            return "Removed {}'s pet.".format(toon.getName())
+
+        if sub != 'info':
+            return "Specify info, adopt [seed], or remove."
+
+        petId = toon.getPetId()
+        if not petId:
+            return "{} has no pet.".format(toon.getName())
+        pet = self.air.doId2do.get(petId)
+        if pet is None or pet.__class__.__name__ != 'DistributedPetAI':
+            return "{}'s pet {} is not generated (offline).".format(toon.getName(), petId)
+
+        from toontown.pets import PetTraits
+        if hasattr(pet, 'traits'):
+            traitText = ', '.join('%s=%.2f' % (name, pet.traits.getTraitValue(name))
+                                  for name in PetTraits.getTraitNames())
+        else:
+            traitText = 'unresolved'
+        mood = pet.mood.getDominantMood() if hasattr(pet, 'mood') else 'unresolved'
+        return "{}'s pet {} ({}): mood={}, traits={}.".format(
+            toon.getName(), petId, pet.getPetName(), mood, traitText)
+
+
+class Petmood(MagicWord):
+    desc = ("Sets one PetMood component directly on the invoker's generated "
+            "pet (PetMood.setComponent), range-checked 0..1 the way "
+            "etc/toon.dc's uint16/1000(0-1) mood fields encode it -- component "
+            "must be one of PetMood.PetMood.Components. Mood otherwise only "
+            "moves on PetConstants.MoodDriftPeriod's 300s drift.")
+    execLocation = MagicWordConfig.EXEC_LOC_SERVER
+    accessLevel = 'ADMIN'
+    arguments = [("component", str, True), ("value", float, True)]
+
+    def handleWord(self, invoker, avId, toon, *args):
+        from toontown.pets import PetMood as PetMoodModule
+
+        component = str(args[0]).strip().lower()
+        if component not in PetMoodModule.PetMood.Components:
+            return "Specify a mood component: {}.".format(', '.join(PetMoodModule.PetMood.Components))
+        try:
+            value = float(args[1])
+        except (TypeError, ValueError):
+            return "Specify a value between 0 and 1."
+        if not 0.0 <= value <= 1.0:
+            return "Specify a value between 0 and 1."
+
+        petId = toon.getPetId()
+        if not petId:
+            return "{} has no pet.".format(toon.getName())
+        pet = self.air.doId2do.get(petId)
+        if pet is None or pet.__class__.__name__ != 'DistributedPetAI' or not hasattr(pet, 'mood'):
+            return "{}'s pet {} is not generated -- mood lives on the pet DO.".format(toon.getName(), petId)
+
+        pet.mood.setComponent(component, value)
+        return "Set {}'s pet {} to {}.".format(toon.getName(), component, value)
+
+
 class SetSpeedChatStyle(MagicWord):
     # The first version of this word did `from toontown.shtiker.OptionsPage
     # import speedChatStyles` to bounds-check/name the index -- OptionsPage.py is
