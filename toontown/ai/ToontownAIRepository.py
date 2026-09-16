@@ -13,6 +13,7 @@ from toontown.catalog.CatalogManagerAI import CatalogManagerAI
 from toontown.effects.FireworkManagerAI import FireworkManagerAI
 from toontown.estate.DistributedBankMgrAI import DistributedBankMgrAI
 from toontown.estate.EstateManagerAI import EstateManagerAI
+from toontown.fishing.FishManagerAI import FishManagerAI
 from toontown.coghq.CogSuitManagerAI import CogSuitManagerAI
 from toontown.coghq.CountryClubManagerAI import CountryClubManagerAI
 from toontown.coghq.FactoryManagerAI import FactoryManagerAI
@@ -231,6 +232,9 @@ class ToontownAIRepository(ToontownInternalRepository):
 
         # Create our firework manager...
         self.fireworkMgr = FireworkManagerAI(self)
+
+        # Create our fish manager...
+        self.fishManager = FishManagerAI(self)
 
         # Generate our trophy manager...
         self.trophyMgr = DistributedTrophyMgrAI(self)
