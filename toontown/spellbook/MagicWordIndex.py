@@ -785,6 +785,57 @@ class Golf(MagicWord):
         toon.b_setGolfHistory(history)
         return f"Gave {toon.getName()} a golf history ({sum(toon.getGolfTrophies())} trophies)."
 
+def _findEstateManager(air):
+    from toontown.estate.EstateManagerAI import EstateManagerAI
+    for do in air.doId2do.values():
+        if isinstance(do, EstateManagerAI):
+            return do
+    return None
+
+
+def _residentHouse(air, toon):
+    """The toon's own house and its estate while that estate is live, found
+    through the estate manager's `worlds` map (EstateManagerAI.py:17-19).
+    `(None, None)` if the toon is not resident in a live estate."""
+    accountId = getattr(toon, 'DISLid', None)
+    if not accountId:
+        return (None, None)
+    estateMgr = _findEstateManager(air)
+    if estateMgr is None:
+        return (None, None)
+    world = estateMgr.worlds.get(accountId)
+    if world is None or world.estate is None:
+        return (None, None)
+    for house in world.houses:
+        if house.avatarId == toon.doId:
+            return (house, world.estate)
+    return (None, None)
+
+
+class Cannon(MagicWord):
+    desc = ("Turns on the invoker's pinball cannon and drops it, with the target it "
+            "shoots at, into the estate the invoker is standing in.")
+    execLocation = MagicWordConfig.EXEC_LOC_SERVER
+    accessLevel = 'ADMIN'
+
+    def handleWord(self, invoker, avId, toon, *args):
+        if not toon.getHouseId():
+            return "{} has no house.".format(toon.getName())
+
+        house, estateAI = _residentHouse(self.air, toon)
+        if house is None:
+            return "{} is not standing in their own live estate.".format(toon.getName())
+
+        # setCannonEnabled is `required` only (etc/toon.dc:1219) -- no `db`,
+        # so the flag lives as long as the house object does and the cannon
+        # has to be generated now rather than on the next visit home.
+        house.setCannonEnabled(1)
+        house.createCannon(estateAI)
+        if house.cannon is None:
+            return "{}'s cannon could not be generated.".format(toon.getName())
+        return "Dropped a cannon in {}'s estate.".format(toon.getName())
+
+
 class Garden(MagicWord):
     aliases = ["gardenstarted"]
     desc = ("Marks the target's garden as started (so the garden page appears), with shovel "
@@ -845,31 +896,13 @@ class Garden(MagicWord):
         toon.b_setFlowerCollection([f[0] for f in self.flowers], [f[1] for f in self.flowers])
         return f"Started {toon.getName()}'s garden with {len(self.flowers)} flowers and shovel skill {shovelSkill}."
 
-    def _findEstateManager(self):
-        from toontown.estate.EstateManagerAI import EstateManagerAI
-        for do in self.air.doId2do.values():
-            if isinstance(do, EstateManagerAI):
-                return do
-        return None
-
     def _residentHouse(self, toon):
-        """The invoker's own live house and estate, found the same way the
-        estate manager's `worlds` map (EstateManagerAI.py:17-19) resolves
-        it -- `(None, None)` if the toon isn't
-        resident in a live estate whose garden has been generated."""
-        accountId = getattr(toon, 'DISLid', None)
-        if not accountId:
+        """The invoker's own live house and estate, once its garden has been
+        generated -- `(None, None)` otherwise."""
+        house, estateAI = _residentHouse(self.air, toon)
+        if house is None or not (house.gardenPlots or house.gardenPlants):
             return (None, None)
-        estateMgr = self._findEstateManager()
-        if estateMgr is None:
-            return (None, None)
-        world = estateMgr.worlds.get(accountId)
-        if world is None or world.estate is None:
-            return (None, None)
-        for house in world.houses:
-            if house.avatarId == toon.doId and (house.gardenPlots or house.gardenPlants):
-                return (house, world.estate)
-        return (None, None)
+        return (house, estateAI)
 
     def _livePlots(self, house, estateAI):
         # Scans live DOs rather than house.gardenPlots -- B6's own

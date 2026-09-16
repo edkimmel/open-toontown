@@ -1,3 +1,4 @@
+import math
 import time
 
 from direct.directnotify import DirectNotifyGlobal
@@ -6,7 +7,9 @@ from direct.distributed.DistributedObjectAI import DistributedObjectAI
 from toontown.building import DoorTypes
 from toontown.catalog import CatalogItem
 from toontown.catalog import CatalogItemList
+from toontown.estate import CannonGlobals
 from toontown.estate import GardenGlobals
+from toontown.estate.DistributedCannonAI import DistributedCannonAI
 from toontown.estate.DistributedFlowerAI import DistributedFlowerAI
 from toontown.estate.DistributedFurnitureManagerAI import DistributedFurnitureManagerAI
 from toontown.estate.DistributedGagTreeAI import DistributedGagTreeAI
@@ -16,6 +19,7 @@ from toontown.estate.DistributedHouseDoorAI import DistributedHouseDoorAI
 from toontown.estate.DistributedHouseInteriorAI import DistributedHouseInteriorAI
 from toontown.estate.DistributedMailboxAI import DistributedMailboxAI
 from toontown.estate.DistributedStatuaryAI import DistributedStatuaryAI
+from toontown.estate.DistributedTargetAI import DistributedTargetAI
 from toontown.estate.DistributedToonStatuaryAI import DistributedToonStatuaryAI
 from toontown.estate.EstateProvisioner import fieldValue
 
@@ -45,6 +49,8 @@ class DistributedHouseAI(DistributedObjectAI):
         self.interior = None
         self.furnitureMgr = None
         self.mailbox = None
+        self.cannon = None
+        self.target = None
         self.door = None
         self.insideDoor = None
         self.gardenBoxes = []
@@ -273,6 +279,36 @@ class DistributedHouseAI(DistributedObjectAI):
         self.mailbox = DistributedMailboxAI(self.air, self)
         self.mailbox.generateWithRequired(self.zoneId)
 
+    def createCannon(self, estateAI):
+        """Generate this house's pinball cannon and the target it shoots at,
+        if the house has one (`cannonEnabled`, etc/toon.dc:1219).  Both go in
+        the estate's outdoor zone, the same zone createMailbox uses.  The
+        target has to exist first: its doId is the cannon's required
+        `targetId` field (etc/toon.dc:995).
+
+        `CannonGlobals.cannonDrops` holds six placements and the reference
+        never reads the table, so there is no placement policy to port; one
+        drop per house slot keeps the six houses' cannons apart.  The target
+        is parked CannonGlobals.TARGET_DISTANCE in front of the drop point,
+        along its heading, CannonGlobals.TARGET_HEIGHT up, so every cannon
+        starts out pointing at its own target.  Idempotent."""
+        if not self.cannonEnabled or self.cannon is not None:
+            return
+
+        x, y, z, h, p, r = CannonGlobals.cannonDrops[self.housePos % len(CannonGlobals.cannonDrops)]
+        heading = math.radians(h)
+        self.target = DistributedTargetAI(self.air,
+                                          x - math.sin(heading) * CannonGlobals.TARGET_DISTANCE,
+                                          y + math.cos(heading) * CannonGlobals.TARGET_DISTANCE,
+                                          z + CannonGlobals.TARGET_HEIGHT)
+        self.target.generateWithRequired(self.zoneId)
+        self.cannon = DistributedCannonAI(self.air, estateAI.doId, self.target.doId,
+                                          x, y, z, h, p, r)
+        self.cannon.generateWithRequired(self.zoneId)
+        # the client keeps the target stashed until the state says enabled
+        # (DistributedTarget.py:95-104)
+        self.target.d_setState(1, 0, 0)
+
     def createGarden(self, estateAI):
         """Generate this house's flower boxes, empty plot hard points, and
         any already-planted hard point's grown object, indexed by
@@ -403,10 +439,13 @@ class DistributedHouseAI(DistributedObjectAI):
         self.gardenBoxes = []
         self.gardenPlots = []
         self.gardenPlants = []
-        for distObj in (self.mailbox, self.insideDoor, self.door, self.interior):
+        for distObj in (self.cannon, self.target, self.mailbox, self.insideDoor,
+                        self.door, self.interior):
             if distObj is not None:
                 distObj.requestDelete()
 
+        self.cannon = None
+        self.target = None
         self.mailbox = None
         self.insideDoor = None
         self.door = None

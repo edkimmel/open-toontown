@@ -132,6 +132,7 @@ class EstateWorldOperation:
             house.createInterior()
             house.createMailbox()
             house.createGarden(world.estate)
+            house.createCannon(world.estate)
             world.houses.append(house)
 
         self.__finish()
