@@ -31,6 +31,7 @@ class DistributedHouse(DistributedObject.DistributedObject):
         self.avId = -1
         self.ownerId = 0
         self.colorIndex = 0
+        self.gardenPos = 0
         self.house = None
         self.name = ''
         self.namePlate = None
@@ -297,6 +298,12 @@ class DistributedHouse(DistributedObject.DistributedObject):
 
     def setAvId(self, id):
         self.avId = id
+
+    def setGardenPos(self, gardenPos):
+        self.gardenPos = gardenPos
+
+    def getGardenPos(self):
+        return self.gardenPos
 
     def setAvatarId(self, avId):
         self.notify.debug('setAvatarId = %s' % avId)
