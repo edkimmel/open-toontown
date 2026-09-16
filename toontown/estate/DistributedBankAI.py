@@ -100,6 +100,11 @@ class DistributedBankAI(DistributedFurnitureItemAI):
     def __release(self, mode, avId):
         self.customerId = 0
         self.d_setMovie(mode, avId)
+        if mode != BankGlobals.BANK_MOVIE_CLEAR:
+            # leave the required field idle once the movie plays out, so a
+            # later generate (the avatar re-entering the house) replays a
+            # mode every client ignores instead of the terminal one
+            self.d_setMovie(BankGlobals.BANK_MOVIE_CLEAR, avId)
         self.freeAvatar(avId)
 
     def __reject(self, avId, reason):

@@ -171,6 +171,11 @@ class DistributedTrunkAI(DistributedClosetAI):
         self.entryBackpack = (0, 0, 0)
         self.entryShoes = (0, 0, 0)
         self.d_setMovie(mode, avId)
+        if mode != ClosetGlobals.CLOSET_MOVIE_CLEAR:
+            # leave the required field idle once the movie plays out, so a
+            # later generate (the avatar re-entering the house) replays a
+            # mode every client ignores instead of the terminal one
+            self.d_setMovie(ClosetGlobals.CLOSET_MOVIE_CLEAR, avId)
         self.d_setState(ClosetGlobals.CLOSED, avId, self.ownerId, '', [], [], [], [])
         if avId in self.air.doId2do:
             self.freeAvatar(avId)
