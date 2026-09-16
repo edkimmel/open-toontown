@@ -21,6 +21,34 @@ class DistributedEstateAI(DistributedObjectAI):
         self.rentalType = 0
         self.slotToonIds = [0] * NUM_HOUSE_SLOTS
         self.slotItems = [[] for _ in range(NUM_HOUSE_SLOTS)]
+        self.idList = [0] * NUM_HOUSE_SLOTS
+        self._idListLive = False
+
+    def announceGenerate(self):
+        # setIdList (etc/toon.dc:1196) is the only wire copy of slotToonIds --
+        # DistributedLawnDecor.getOwnerId (DistributedLawnDecor.py:216-222)
+        # indexes estate.idList by ownerIndex, the same index
+        # DistributedLawnDecorAI.getOwnerAvId uses into slotToonIds
+        # (DistributedLawnDecorAI.py:60-63).  slotToonIds is already final by
+        # the time announceGenerate runs (required fields are unpacked before
+        # generate()/announceGenerate()), so this is the first safe point to
+        # broadcast it.
+        DistributedObjectAI.announceGenerate(self)
+        self._idListLive = True
+        self.b_setIdList(list(self.slotToonIds))
+
+    def getIdList(self):
+        return self.idList
+
+    def setIdList(self, idList):
+        self.idList = idList
+
+    def b_setIdList(self, idList):
+        self.setIdList(idList)
+        self.d_setIdList(idList)
+
+    def d_setIdList(self, idList):
+        self.sendUpdate('setIdList', [idList])
 
     def loadFromDb(self, fields):
         fields = fields or {}
@@ -75,8 +103,13 @@ class DistributedEstateAI(DistributedObjectAI):
     def getRentalType(self):
         return self.rentalType
 
+    def _setSlotToonId(self, slot, avId):
+        self.slotToonIds[slot] = avId
+        if self._idListLive:
+            self.b_setIdList(list(self.slotToonIds))
+
     def setSlot0ToonId(self, avId):
-        self.slotToonIds[0] = avId
+        self._setSlotToonId(0, avId)
 
     def getSlot0ToonId(self):
         return self.slotToonIds[0]
@@ -88,7 +121,7 @@ class DistributedEstateAI(DistributedObjectAI):
         return self.slotItems[0]
 
     def setSlot1ToonId(self, avId):
-        self.slotToonIds[1] = avId
+        self._setSlotToonId(1, avId)
 
     def getSlot1ToonId(self):
         return self.slotToonIds[1]
@@ -100,7 +133,7 @@ class DistributedEstateAI(DistributedObjectAI):
         return self.slotItems[1]
 
     def setSlot2ToonId(self, avId):
-        self.slotToonIds[2] = avId
+        self._setSlotToonId(2, avId)
 
     def getSlot2ToonId(self):
         return self.slotToonIds[2]
@@ -112,7 +145,7 @@ class DistributedEstateAI(DistributedObjectAI):
         return self.slotItems[2]
 
     def setSlot3ToonId(self, avId):
-        self.slotToonIds[3] = avId
+        self._setSlotToonId(3, avId)
 
     def getSlot3ToonId(self):
         return self.slotToonIds[3]
@@ -124,7 +157,7 @@ class DistributedEstateAI(DistributedObjectAI):
         return self.slotItems[3]
 
     def setSlot4ToonId(self, avId):
-        self.slotToonIds[4] = avId
+        self._setSlotToonId(4, avId)
 
     def getSlot4ToonId(self):
         return self.slotToonIds[4]
@@ -136,7 +169,7 @@ class DistributedEstateAI(DistributedObjectAI):
         return self.slotItems[4]
 
     def setSlot5ToonId(self, avId):
-        self.slotToonIds[5] = avId
+        self._setSlotToonId(5, avId)
 
     def getSlot5ToonId(self):
         return self.slotToonIds[5]
