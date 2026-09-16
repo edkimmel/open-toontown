@@ -916,9 +916,11 @@ class Garden(MagicWord):
 
     def _livePlants(self, house, estateAI):
         from toontown.estate.DistributedGardenPlotAI import DistributedGardenPlotAI
+        from toontown.estate.DistributedGardenBoxAI import DistributedGardenBoxAI
         from toontown.estate.DistributedLawnDecorAI import DistributedLawnDecorAI
         return [do for do in self.air.doId2do.values()
-                if isinstance(do, DistributedLawnDecorAI) and not isinstance(do, DistributedGardenPlotAI)
+                if isinstance(do, DistributedLawnDecorAI)
+                and not isinstance(do, (DistributedGardenPlotAI, DistributedGardenBoxAI))
                 and do.estateAI is estateAI and do.ownerIndex == house.gardenPos]
 
     def _plotFor(self, house, estateAI, wantedType):
