@@ -22,6 +22,7 @@ class DistributedFishingTargetAI(DistributedObjectAI):
         DistributedObjectAI.__init__(self, air)
         self.pondDoId = pondDoId
         self.pond = None
+        self.state = (FishingTargetGlobals.OFF, 0, 0, 0, 0)
         # random.Random-compatible source; a test replaces this instead of
         # monkeypatching the module.
         self.rng = random
@@ -49,6 +50,12 @@ class DistributedFishingTargetAI(DistributedObjectAI):
     def getPondDoId(self):
         return self.pondDoId
 
+    def setState(self, stateIndex, angle, radius, time, timeStamp):
+        self.state = (stateIndex, angle, radius, time, timeStamp)
+
+    def getState(self):
+        return self.state
+
     def __stepTaskName(self):
         return self.uniqueName('fishingTargetStep')
 
@@ -70,6 +77,6 @@ class DistributedFishingTargetAI(DistributedObjectAI):
         angle = self.rng.uniform(0, 2 * math.pi)
         radius = self.rng.uniform(0, maxRadius)
         timeStamp = globalClockDelta.getRealNetworkTime()
-        self.sendUpdate('setState', [FishingTargetGlobals.MOVING, angle,
-                                     radius, FishingTargetGlobals.StepTime,
-                                     timeStamp])
+        self.setState(FishingTargetGlobals.MOVING, angle, radius,
+                      FishingTargetGlobals.StepTime, timeStamp)
+        self.sendUpdate('setState', list(self.state))
