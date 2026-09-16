@@ -4,7 +4,10 @@ from direct.distributed.DistributedObjectAI import DistributedObjectAI
 from toontown.building import DoorTypes
 from toontown.catalog import CatalogItem
 from toontown.catalog import CatalogItemList
+from toontown.estate import GardenGlobals
 from toontown.estate.DistributedFurnitureManagerAI import DistributedFurnitureManagerAI
+from toontown.estate.DistributedGardenBoxAI import DistributedGardenBoxAI
+from toontown.estate.DistributedGardenPlotAI import DistributedGardenPlotAI
 from toontown.estate.DistributedHouseDoorAI import DistributedHouseDoorAI
 from toontown.estate.DistributedHouseInteriorAI import DistributedHouseInteriorAI
 from toontown.estate.DistributedMailboxAI import DistributedMailboxAI
@@ -36,6 +39,8 @@ class DistributedHouseAI(DistributedObjectAI):
         self.mailbox = None
         self.door = None
         self.insideDoor = None
+        self.gardenBoxes = []
+        self.gardenPlots = []
 
     def loadFromDb(self, fields):
         fields = fields or {}
@@ -243,10 +248,49 @@ class DistributedHouseAI(DistributedObjectAI):
         self.mailbox = DistributedMailboxAI(self.air, self)
         self.mailbox.generateWithRequired(self.zoneId)
 
+    def createGarden(self, estateAI):
+        """Generate this house's flower boxes and empty plot hard points,
+        indexed by `gardenPos` (etc/toon.dc:1208, set to the house's own slot
+        by EstateProvisioner.py:157) the same way the client's
+        `whatCanBePlanted(ownerIndex, plot)` does (GardenGlobals.py:1277,
+        DistributedGardenPlot.py:38).  A hard point already holding a planted
+        `lawnItem` (struct at etc/toon.dc:1161, field order
+        type/hardPoint/waterLevel/growthLevel/optional) is skipped -- planting
+        replaces the plot DO with a grown one in a later task.  Idempotent:
+        does nothing if this house's garden is already generated."""
+        if self.gardenBoxes or self.gardenPlots:
+            return
+
+        for boxIndex, (x, y, h, boxType) in enumerate(GardenGlobals.estateBoxes[self.gardenPos]):
+            box = DistributedGardenBoxAI(self.air, estateAI)
+            box.setPlot(boxIndex)
+            box.setPosition(x, y, 0)
+            box.setHeading(h)
+            box.setOwnerIndex(self.gardenPos)
+            box.setTypeIndex(boxType)
+            box.generateWithRequired(self.zoneId)
+            self.gardenBoxes.append(box)
+
+        plantedHardPoints = set(item[1] for item in estateAI.slotItems[self.gardenPos])
+        for hardPoint, (x, y, h, plantType) in enumerate(GardenGlobals.estatePlots[self.gardenPos]):
+            if hardPoint in plantedHardPoints:
+                continue
+            plot = DistributedGardenPlotAI(self.air, estateAI)
+            plot.setPlot(hardPoint)
+            plot.setPosition(x, y, 0)
+            plot.setHeading(h)
+            plot.setOwnerIndex(self.gardenPos)
+            plot.generateWithRequired(self.zoneId)
+            self.gardenPlots.append(plot)
+
     def destroy(self):
         if self.furnitureMgr is not None:
             self.furnitureMgr.destroy()
             self.furnitureMgr = None
+        for garden in self.gardenBoxes + self.gardenPlots:
+            garden.requestDelete()
+        self.gardenBoxes = []
+        self.gardenPlots = []
         for distObj in (self.mailbox, self.insideDoor, self.door, self.interior):
             if distObj is not None:
                 distObj.requestDelete()
