@@ -84,18 +84,7 @@ class DistributedBankAI(DistributedFurnitureItemAI):
                                      globalClockDelta.getRealNetworkTime()])
 
     def __clamp(self, av, amount):
-        # the same four limits BankGUI.__updateTransaction applies
-        # client-side (BankGUI.py:74-77), re-applied so a forged amount
-        # cannot move more than the jar/bank allow
-        jarMoney = av.getMoney()
-        maxJarMoney = av.getMaxMoney()
-        bankMoney = av.getBankMoney()
-        maxBankMoney = av.getMaxBankMoney()
-        amount = min(amount, jarMoney)
-        amount = min(amount, maxBankMoney - bankMoney)
-        amount = -min(-amount, maxJarMoney - jarMoney)
-        amount = -min(-amount, bankMoney)
-        return amount
+        return BankGlobals.clampTransfer(av, amount)
 
     def __release(self, mode, avId):
         self.customerId = 0
