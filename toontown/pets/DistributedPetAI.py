@@ -1008,6 +1008,11 @@ class DistributedPetAI(DistributedSmoothNodeAI.DistributedSmoothNodeAI, PetLooke
     def __lockPetMoveTask(self, avId):
         if not hasattr(self, 'air') or avId not in self.air.doId2do:
             self.notify.warning('avId: %s gone or self deleted!' % avId)
+            if hasattr(self, 'air') and self.busy == avId:
+                self.disableLockMover()
+                self.unlockPet()
+                self.sendClearMovie()
+                self.movieMode = None
             return Task.done
         av = self.air.doId2do.get(avId)
         dist = av.getDistance(self)
