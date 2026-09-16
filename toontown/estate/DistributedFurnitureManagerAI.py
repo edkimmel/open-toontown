@@ -3,11 +3,14 @@ from direct.distributed.DistributedObjectAI import DistributedObjectAI
 
 from toontown.catalog import CatalogFurnitureItem
 from toontown.catalog import CatalogItem
+from toontown.catalog import CatalogItemList
+from toontown.catalog import CatalogSurfaceItem
 from toontown.estate.DistributedBankAI import DistributedBankAI
 from toontown.estate.DistributedClosetAI import DistributedClosetAI
 from toontown.estate.DistributedFurnitureItemAI import DistributedFurnitureItemAI
 from toontown.estate.DistributedPhoneAI import DistributedPhoneAI
 from toontown.estate.DistributedTrunkAI import DistributedTrunkAI
+from toontown.toonbase import ToontownGlobals
 
 # every house has a telephone, and it cannot be put away
 # (toontown/estate/houseDesign.py:1546)
@@ -71,6 +74,20 @@ class DistributedFurnitureManagerAI(DistributedObjectAI):
     def b_setDeletedItems(self, blob):
         self.house.setDeletedItems(blob)
         self.d_setDeletedItems(blob)
+
+    def d_setAtticWallpaper(self, blob):
+        self.sendUpdate('setAtticWallpaper', [blob])
+
+    def b_setAtticWallpaper(self, blob):
+        self.house.setAtticWallpaper(blob)
+        self.d_setAtticWallpaper(blob)
+
+    def d_setAtticWindows(self, blob):
+        self.sendUpdate('setAtticWindows', [blob])
+
+    def b_setAtticWindows(self, blob):
+        self.house.setAtticWindows(blob)
+        self.d_setAtticWindows(blob)
 
     def getDirector(self):
         return self.directorAvId
@@ -245,6 +262,152 @@ class DistributedFurnitureManagerAI(DistributedObjectAI):
                 self.b_setAtticItems(attic.getBlob())
                 retcode = 0
         self.sendUpdateToAvatarId(avId, 'recoverDeletedItemResponse', [retcode, context])
+
+    def __interiorWallpaperList(self):
+        return CatalogItemList.CatalogItemList(
+            self.house.getInteriorWallpaper(), store=CatalogItem.Customization)
+
+    def __setWallpaperInRoom(self, room, item):
+        """The interior wallpaper blob is a flat list keyed by
+        room * NUM_ST_TYPES + surfaceType (DistributedHouseInterior.py:103-109).
+        Padding a not-yet-furnished room with the incoming item keeps the
+        list a whole number of rooms without inventing a placeholder item
+        the reference has no equivalent for; the slot is overwritten with
+        the real item right after."""
+        wallpaper = self.__interiorWallpaperList()
+        slot = room * CatalogSurfaceItem.NUM_ST_TYPES + item.getSurfaceType()
+        while len(wallpaper) <= slot:
+            wallpaper.append(item)
+        wallpaper[slot] = item
+        blob = wallpaper.getBlob()
+        self.house.setInteriorWallpaper(blob)
+        if self.interior is not None:
+            self.interior.b_setWallpaper(blob)
+
+    def __interiorWindowList(self):
+        return CatalogItemList.CatalogItemList(
+            self.house.getInteriorWindows(),
+            store=CatalogItem.Customization | CatalogItem.WindowPlacement)
+
+    def __setInteriorWindowList(self, windows):
+        blob = windows.getBlob()
+        self.house.setInteriorWindows(blob)
+        if self.interior is not None:
+            self.interior.b_setWindows(blob)
+
+    def __findWindowSlot(self, windows, slot):
+        for i in range(len(windows)):
+            if windows[i].placement == slot:
+                return i
+        return None
+
+    def moveWallpaperFromAtticMessage(self, index, room, context):
+        avId = self.air.getAvatarIdFromSender()
+        retcode = ToontownGlobals.FM_NotDirector
+        if self.__mayMutate(avId):
+            attic = self.house.getAtticWallpaperList()
+            if index < len(attic):
+                item = attic.pop(index)
+                self.b_setAtticWallpaper(attic.getBlob())
+                self.__setWallpaperInRoom(room, item)
+                retcode = ToontownGlobals.FM_MovedItem
+            else:
+                retcode = ToontownGlobals.FM_InvalidIndex
+        self.sendUpdateToAvatarId(avId, 'moveWallpaperFromAtticResponse', [retcode, context])
+
+    def deleteWallpaperFromAtticMessage(self, blob, index, context):
+        avId = self.air.getAvatarIdFromSender()
+        retcode = ToontownGlobals.FM_NotDirector
+        if self.__mayMutate(avId):
+            attic = self.house.getAtticWallpaperList()
+            offered = CatalogItem.getItem(bytes(blob), store=CatalogItem.Customization)
+            if index < len(attic) and attic[index] == offered:
+                removed = attic.pop(index)
+                self.b_setAtticWallpaper(attic.getBlob())
+                deleted = self.house.getDeletedItemList()
+                deleted.append(removed)
+                self.b_setDeletedItems(deleted.getBlob())
+                retcode = ToontownGlobals.FM_DeletedItem
+            else:
+                retcode = ToontownGlobals.FM_InvalidItem
+        self.sendUpdateToAvatarId(avId, 'deleteWallpaperFromAtticResponse', [retcode, context])
+
+    def moveWindowToAtticMessage(self, slot, context):
+        avId = self.air.getAvatarIdFromSender()
+        retcode = ToontownGlobals.FM_NotDirector
+        if self.__mayMutate(avId):
+            interior = self.__interiorWindowList()
+            occupantIndex = self.__findWindowSlot(interior, slot)
+            if occupantIndex is not None:
+                item = interior.pop(occupantIndex)
+                self.__setInteriorWindowList(interior)
+                item.placement = None
+                attic = self.house.getAtticWindowList()
+                attic.append(item)
+                self.b_setAtticWindows(attic.getBlob())
+                retcode = ToontownGlobals.FM_MovedItem
+            else:
+                retcode = ToontownGlobals.FM_InvalidIndex
+        self.sendUpdateToAvatarId(avId, 'moveWindowToAtticResponse', [retcode, context])
+
+    def moveWindowFromAtticMessage(self, index, slot, context):
+        avId = self.air.getAvatarIdFromSender()
+        retcode = ToontownGlobals.FM_NotDirector
+        if self.__mayMutate(avId):
+            attic = self.house.getAtticWindowList()
+            if index < len(attic):
+                item = attic.pop(index)
+                interior = self.__interiorWindowList()
+                occupantIndex = self.__findWindowSlot(interior, slot)
+                item.placement = slot
+                if occupantIndex is None:
+                    interior.append(item)
+                    retcode = ToontownGlobals.FM_MovedItem
+                else:
+                    occupant = interior[occupantIndex]
+                    interior[occupantIndex] = item
+                    occupant.placement = None
+                    attic.insert(index, occupant)
+                    retcode = ToontownGlobals.FM_SwappedItem
+                self.b_setAtticWindows(attic.getBlob())
+                self.__setInteriorWindowList(interior)
+            else:
+                retcode = ToontownGlobals.FM_InvalidIndex
+        self.sendUpdateToAvatarId(avId, 'moveWindowFromAtticResponse', [retcode, context])
+
+    def moveWindowMessage(self, fromSlot, toSlot, context):
+        avId = self.air.getAvatarIdFromSender()
+        retcode = ToontownGlobals.FM_NotDirector
+        if self.__mayMutate(avId):
+            interior = self.__interiorWindowList()
+            fromIndex = self.__findWindowSlot(interior, fromSlot)
+            toIndex = self.__findWindowSlot(interior, toSlot)
+            if fromIndex is None:
+                retcode = ToontownGlobals.FM_InvalidIndex
+            elif toIndex is not None:
+                retcode = ToontownGlobals.FM_RoomFull
+            else:
+                interior[fromIndex].placement = toSlot
+                self.__setInteriorWindowList(interior)
+                retcode = ToontownGlobals.FM_MovedItem
+        self.sendUpdateToAvatarId(avId, 'moveWindowResponse', [retcode, context])
+
+    def deleteWindowFromAtticMessage(self, blob, index, context):
+        avId = self.air.getAvatarIdFromSender()
+        retcode = ToontownGlobals.FM_NotDirector
+        if self.__mayMutate(avId):
+            attic = self.house.getAtticWindowList()
+            offered = CatalogItem.getItem(bytes(blob), store=CatalogItem.Customization)
+            if index < len(attic) and attic[index] == offered:
+                removed = attic.pop(index)
+                self.b_setAtticWindows(attic.getBlob())
+                deleted = self.house.getDeletedItemList()
+                deleted.append(removed)
+                self.b_setDeletedItems(deleted.getBlob())
+                retcode = ToontownGlobals.FM_DeletedItem
+            else:
+                retcode = ToontownGlobals.FM_InvalidItem
+        self.sendUpdateToAvatarId(avId, 'deleteWindowFromAtticResponse', [retcode, context])
 
     def createFurniture(self, zoneId):
         """Generate a distributed object for each item standing in the room.
