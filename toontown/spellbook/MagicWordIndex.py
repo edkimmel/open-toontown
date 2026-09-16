@@ -474,7 +474,7 @@ class Furnish(MagicWord):
         # have something to bring in from the attic.
         atticWallpaperItems = [CatalogWallpaperItem(1000, 0), CatalogFlooringItem(1000, 0),
             CatalogMouldingItem(1000, 0), CatalogWainscotingItem(1000, 0)]
-        atticWindowItems = [CatalogWindowItem(10)]
+        atticWindowItems = [CatalogWindowItem(10), CatalogWindowItem(20)]
 
         house = self.air.doId2do.get(houseId)
         addedNames = []
