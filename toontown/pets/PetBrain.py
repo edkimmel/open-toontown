@@ -97,10 +97,11 @@ class PetBrain(DirectObject.DirectObject, CPetBrain):
         if not self.started:
             return
         self.started = 0
-        del self.lookers
-        del self.lookees
         for doId in self.pet._getNearbyAvatarDict():
             self._handleAvatarLeave(doId)
+
+        del self.lookers
+        del self.lookees
 
         for goal in self.globalGoals:
             self.goalMgr.removeGoal(goal)
@@ -557,6 +558,12 @@ class PetBrain(DirectObject.DirectObject, CPetBrain):
         if avId not in self.nearbyAvs:
             PetBrain.notify.warning('av %s not in self.nearbyAvs' % avId)
             return
+        # A peer DO can leave the zone before collision traversal produces
+        # an out event.  Close our real PetLookerAI relationship now so the
+        # collision map and the brain's lookee bookkeeping cannot retain a
+        # departed pet indefinitely.
+        if avId in self.pet.others:
+            self.pet._handleLookingAtOtherStop(avId)
         del self.nearbyAvs[avId]
         self.pet.lerpMoods({'loneliness': 0.1})
         self._removeAwarenessOf(avId)
