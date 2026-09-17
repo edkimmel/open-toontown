@@ -127,6 +127,8 @@ class PetLookerAI:
         if not self.__active:
             PetLookerAI.notify.warning('%s: _handleZoneChange: not active!' % self.doId)
             return
+        for otherId in list(self.others.keys()):
+            self._handleLookingAtOtherStop(otherId)
         self._petLookZoneData.getCollTrav(self.CollTravName).removeCollider(
             self.lookSphereNodePath)
         self._petLookZoneData.releaseCollTrav(self.CollTravName)
