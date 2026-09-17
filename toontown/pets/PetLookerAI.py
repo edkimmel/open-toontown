@@ -23,6 +23,7 @@ def getStopLookedAtByOtherEvent(lookedAtAvId):
 
 class PetLookerAI:
     notify = DirectNotifyGlobal.directNotify.newCategory('PetLookerAI')
+    CollTravName = 'pet-look'
 
     def __init__(self):
         self.__active = 0
@@ -95,9 +96,10 @@ class PetLookerAI:
         self._cHandler = CollisionHandlerEvent()
         self._cHandler.addInPattern(self._getLookingStartEvent())
         self._cHandler.addOutPattern(self._getLookingStopEvent())
-        collTrav = self.getCollTrav()
-        if collTrav:
-            collTrav.addCollider(self.lookSphereNodePath, self._cHandler)
+        self._petLookZoneData = AIZoneData(self.air, self.parentId, self.zoneId)
+        self._petLookZoneData.acquireCollTrav(self.CollTravName)
+        self._petLookZoneData.getCollTrav(self.CollTravName).addCollider(
+            self.lookSphereNodePath, self._cHandler)
         self.accept(self._getLookingStartEvent(), self._handleLookingAtOtherStart)
         self.accept(self._getLookingStopEvent(), self._handleLookingAtOtherStop)
         if hasattr(self, 'eventProxy'):
@@ -107,9 +109,8 @@ class PetLookerAI:
             self.eventProxy.accept(self.getZoneChangeEvent(), self._handleZoneChange)
 
     def _destroyPetLookSphere(self):
-        collTrav = self.getCollTrav()
-        if collTrav:
-            collTrav.removeCollider(self.lookSphereNodePath)
+        self._petLookZoneData.getCollTrav(self.CollTravName).removeCollider(
+            self.lookSphereNodePath)
         del self._cHandler
         self.lookSphereNodePath.removeNode()
         del self.lookSphereNodePath
@@ -117,20 +118,24 @@ class PetLookerAI:
         self.ignore(self._getLookingStopEvent())
         self.eventProxy.ignoreAll()
         del self.eventProxy
+        self._petLookZoneData.releaseCollTrav(self.CollTravName)
+        self._petLookZoneData.destroy()
+        del self._petLookZoneData
 
     def _handleZoneChange(self, newZoneId, oldZoneId):
         PetLookerAI.notify.debug('_handleZoneChange: %s' % self.doId)
         if not self.__active:
             PetLookerAI.notify.warning('%s: _handleZoneChange: not active!' % self.doId)
             return
-        oldZoneData = AIZoneData(self.air, self.parentId, oldZoneId)
-        if oldZoneData.hasCollTrav():
-            oldZoneData.getCollTrav().removeCollider(self.lookSphereNodePath)
-        oldZoneData.destroy()
+        self._petLookZoneData.getCollTrav(self.CollTravName).removeCollider(
+            self.lookSphereNodePath)
+        self._petLookZoneData.releaseCollTrav(self.CollTravName)
+        self._petLookZoneData.destroy()
         newZoneData = AIZoneData(self.air, self.parentId, newZoneId)
-        if newZoneData.hasCollTrav():
-            newZoneData.getCollTrav().addCollider(self.lookSphereNodePath, self._cHandler)
-        newZoneData.destroy()
+        newZoneData.acquireCollTrav(self.CollTravName)
+        newZoneData.getCollTrav(self.CollTravName).addCollider(
+            self.lookSphereNodePath, self._cHandler)
+        self._petLookZoneData = newZoneData
 
     def _getLookingStartEvent(self):
         return 'PetLookerAI-lookingStart-%s' % self.doId

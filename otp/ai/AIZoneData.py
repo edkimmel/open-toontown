@@ -36,6 +36,7 @@ class AIZoneDataObj:
         self._refCount = 0
         self._collTravs = {}
         self._collTravsStarted = set()
+        self._collTravRefCounts = {}
 
     def __str__(self):
         output = str(self._collTravs)
@@ -64,6 +65,7 @@ class AIZoneDataObj:
 
         del self._collTravsStarted
         del self._collTravs
+        del self._collTravRefCounts
         if hasattr(self, '_nonCollidableParent'):
             self._nonCollidableParent.removeNode()
             del self._nonCollidableParent
@@ -155,6 +157,24 @@ class AIZoneDataObj:
             self._collTravsStarted.add(cTravName)
         self.setRespectPrevTransform(respectPrevTransform, cTravName=cTravName)
         return
+
+    def acquireCollTrav(self, cTravName = None):
+        if cTravName is None:
+            cTravName = AIZoneDataObj.DefaultCTravName
+        refCount = self._collTravRefCounts.get(cTravName, 0)
+        if refCount == 0:
+            self.startCollTrav(cTravName=cTravName)
+        self._collTravRefCounts[cTravName] = refCount + 1
+
+    def releaseCollTrav(self, cTravName = None):
+        if cTravName is None:
+            cTravName = AIZoneDataObj.DefaultCTravName
+        refCount = self._collTravRefCounts.get(cTravName, 0)
+        if refCount <= 1:
+            self._collTravRefCounts.pop(cTravName, None)
+            self.stopCollTrav(cTravName=cTravName)
+        else:
+            self._collTravRefCounts[cTravName] = refCount - 1
 
     def stopCollTrav(self, cTravName = None):
         if cTravName is None:
