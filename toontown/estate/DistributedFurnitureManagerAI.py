@@ -21,14 +21,8 @@ PhoneFurnitureType = 1399
 class DistributedFurnitureManagerAI(DistributedObjectAI):
     """Director lock and furniture-mode session for one house's furniture.
 
-    Guest-edit policy: any avatar standing in the house may hold the
-    director lock (the client already renders a non-owner director,
-    houseDesign.py's fDirector=0 branch), but only the owner's mutating
-    requests are honoured once the attic/room RPCs are implemented -- the
-    same split the client already assumes when it refuses to let a guest
-    delete an item (houseDesign.py's ownerId check before a delete).
-    Holding the lock and being allowed to mutate are therefore two
-    separate checks; this class only grants/releases the lock.
+    Furniture mode is owner-only.  A visitor may watch the manager but may
+    neither hold its director lock nor mutate the house's item state.
     """
 
     notify = DirectNotifyGlobal.directNotify.newCategory('DistributedFurnitureManagerAI')
@@ -116,6 +110,11 @@ class DistributedFurnitureManagerAI(DistributedObjectAI):
         if avId == 0:
             if self.directorAvId == senderId:
                 self.__releaseDirector()
+            return
+        if senderId != self.getOwnerId():
+            self.air.writeServerEvent(
+                'suspicious', senderId,
+                'DistributedFurnitureManagerAI.suggestDirector by non-owner')
             return
         if self.directorAvId != 0:
             # someone else already directs; the request is not honoured
