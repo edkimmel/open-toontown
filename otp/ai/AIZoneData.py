@@ -153,7 +153,7 @@ class AIZoneDataObj:
             cTravName = AIZoneDataObj.DefaultCTravName
         if cTravName not in self._collTravsStarted:
             self.getCollTrav(name=cTravName)
-            taskMgr.add(self._doCollisions, self._getCTravTaskName(name=cTravName), priority=OTPGlobals.AICollisionPriority, extraArgs=[self._zoneId])
+            taskMgr.add(self._doCollisions, self._getCTravTaskName(name=cTravName), priority=OTPGlobals.AICollisionPriority, extraArgs=[self._zoneId, None, cTravName])
             self._collTravsStarted.add(cTravName)
         self.setRespectPrevTransform(respectPrevTransform, cTravName=cTravName)
         return
