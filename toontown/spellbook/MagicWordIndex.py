@@ -1825,6 +1825,31 @@ class Tank(MagicWord):
         return "Set {}'s max fish tank to {}.".format(toon.getName(), maxTank)
 
 
+class Befriend(MagicWord):
+    """Dev-only seed for live tests which require reciprocal friendship."""
+    desc = ("Creates a reciprocal friendship between the invoker and one "
+            "other toon currently connected to this AI, using "
+            "FriendManagerAI.makeFriends so both persistent friend lists "
+            "follow the normal server path.")
+    execLocation = MagicWordConfig.EXEC_LOC_SERVER
+    accessLevel = 'ADMIN'
+    arguments = [("otherId", int, True)]
+
+    def handleWord(self, invoker, avId, toon, *args):
+        otherId = int(args[0])
+        if otherId == avId:
+            return "Specify another live toon."
+        other = self.air.doId2do.get(otherId)
+        if other is None or other.__class__.__name__ != 'DistributedToonAI':
+            return "Toon {} is not live on this AI.".format(otherId)
+        friendMgr = getattr(self.air, 'friendManager', None)
+        if friendMgr is None:
+            return "No friend manager on this AI."
+        if not friendMgr.makeFriends(avId, otherId):
+            return "Could not befriend toon {}.".format(otherId)
+        return "{} and {} are now reciprocal friends.".format(toon.getName(), other.getName())
+
+
 class Pet(MagicWord):
     desc = ("'info' prints the invoker's petId and, when the pet is "
             "generated, its name, dominant mood and traits; 'adopt [seed]' "
