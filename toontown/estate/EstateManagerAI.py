@@ -2,7 +2,7 @@ from direct.directnotify import DirectNotifyGlobal
 from direct.distributed.DistributedObjectAI import DistributedObjectAI
 
 from toontown.estate.EstateProvisioner import EstateProvisioner
-from toontown.estate.EstateWorld import EstateWorld, EstateWorldOperation
+from toontown.estate.EstateWorld import EstatePetActivation, EstateWorld, EstateWorldOperation
 
 class EstateManagerAI(DistributedObjectAI):
     notify = DirectNotifyGlobal.directNotify.newCategory('EstateManagerAI')
@@ -151,8 +151,14 @@ class EstateManagerAI(DistributedObjectAI):
         # reads the zone lookups above, so it runs after them.  Both it and
         # exitEstate only exist when pets are on.
         av = self.air.doId2do.get(avId)
-        if av is not None and hasattr(av, 'enterEstate'):
+        if av is not None and hasattr(av, 'enterEstate') and not av.isInEstate():
             av.enterEstate(world.ownerId, world.zoneId)
+        # ``EstateWorldOperation.__activatePets`` only sees the avatars that
+        # were waiting while a world first opened.  A visitor admitted after
+        # worldReady still owns a persistent pet row, so use the same DBSS
+        # activation/wait/placement helper here.  It deduplicates both an
+        # already-placed pet and an activation still waiting for ENTER_AI.
+        EstatePetActivation(self.air, world, [avId]).start()
 
     def exitEstate(self):
         senderId = self.air.getAvatarIdFromSender()

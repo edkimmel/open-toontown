@@ -97,6 +97,75 @@ def teardownPets(world):
     world.pets = []
 
 
+class EstatePetActivation:
+    """Activate one or more persistent pets into a live estate.
+
+    Estate opening and a later visitor admission use the same DBSS lifecycle:
+    the persistent pet must arrive as an ENTER_AI object before it can be
+    placed on the lawn.  ``world.activatingPetIds`` makes concurrent/repeated
+    admissions harmless while the DBSS response is still in flight.
+    """
+
+    ACTIVATE_POLL = 0.2
+    ACTIVATE_TRIES = 50
+    notify = DirectNotifyGlobal.directNotify.newCategory('EstatePetActivation')
+
+    def __init__(self, air, world, avIds, callback=None):
+        self.air = air
+        self.world = world
+        self.avIds = list(avIds)
+        self.callback = callback
+        self.activating = []
+        self.waited = 0
+
+    def start(self):
+        placed = set(pet.doId for pet in self.world.pets)
+        for avId in self.avIds:
+            av = self.air.doId2do.get(avId)
+            petId = getattr(av, 'petId', 0)
+            if (petId and petId not in placed and
+                    petId not in self.world.activatingPetIds and
+                    petId not in self.activating):
+                self.activating.append(petId)
+
+        if not self.activating:
+            self.__finish()
+            return
+
+        self.world.activatingPetIds.update(self.activating)
+        for doId in self.activating:
+            self.air.sendActivate(doId, self.air.districtId, self.world.zoneId)
+
+        self.__waitForPets()
+
+    def __waitForPets(self, task=None):
+        missing = [doId for doId in self.activating if doId not in self.air.doId2do]
+        if missing:
+            self.waited += 1
+            if self.waited > self.ACTIVATE_TRIES:
+                self.notify.warning('Pets %s never activated!' % missing)
+            else:
+                taskMgr.doMethodLater(self.ACTIVATE_POLL, self.__waitForPets,
+                                      'estate-pet-activate-%s-%s' %
+                                      (self.world.estateId, '-'.join(str(doId)
+                                                                       for doId in self.activating)))
+                return
+
+        placed = set(pet.doId for pet in self.world.pets)
+        for doId in self.activating:
+            self.world.activatingPetIds.discard(doId)
+            pet = self.air.doId2do.get(doId)
+            if pet is not None and doId not in placed:
+                self.world.pets.append(placePet(pet))
+                placed.add(doId)
+
+        self.__finish()
+
+    def __finish(self):
+        if self.callback is not None:
+            self.callback()
+
+
 def teardownFishingPond(world):
     """Remove the estate's fishing pond, its spots and its targets, spots
     and targets first so the pond is the last of the three to go -- shared
@@ -134,6 +203,11 @@ class EstateWorld:
         self.fishingSpots = []
         self.fishingTargets = []
         self.pets = []
+        # Pet DBSS activations can overlap when an already-open estate admits
+        # a second toon.  Keep their persistent ids separate from ``pets``:
+        # an object only joins ``pets`` after its ENTER_AI arrives and it has
+        # been placed on the lawn.
+        self.activatingPetIds = set()
 
     def addOccupant(self, avId):
         if avId not in self.occupants:
@@ -312,49 +386,7 @@ class EstateWorldOperation:
         world = self.world
         avIds = [world.ownerId]
         avIds.extend(avId for avId in world.occupants if avId not in avIds)
-        self.activating = []
-        for avId in avIds:
-            av = self.air.doId2do.get(avId)
-            petId = getattr(av, 'petId', 0)
-            if petId and petId not in self.activating:
-                self.activating.append(petId)
-
-        if not self.activating:
-            self.__finish()
-            return
-
-        for doId in self.activating:
-            self.air.sendActivate(doId, self.air.districtId, world.zoneId)
-
-        self.waited = 0
-        self.__waitForPets()
-
-    def __waitForPets(self, task=None):
-        missing = [doId for doId in self.activating if doId not in self.air.doId2do]
-        if missing:
-            self.waited += 1
-            if self.waited > self.ACTIVATE_TRIES:
-                # unlike the estate and the houses, a pet that never comes
-                # back is not worth holding the estate closed for
-                self.notify.warning('Pets %s never activated!' % missing)
-            else:
-                taskMgr.doMethodLater(self.ACTIVATE_POLL, self.__waitForPets,
-                                      'estate-pet-activate-%s' % self.world.estateId)
-                return
-
-        self.__placePets()
-
-    def __placePets(self):
-        world = self.world
-        for doId in self.activating:
-            pet = self.air.doId2do.get(doId)
-            if pet is None:
-                continue
-
-            world.pets.append(placePet(pet))
-
-        self.activating = []
-        self.__finish()
+        EstatePetActivation(self.air, world, avIds, self.__finish).start()
 
     def __finish(self):
         self.manager.worldReady(self.world)
