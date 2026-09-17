@@ -1850,6 +1850,51 @@ class Befriend(MagicWord):
         return "{} and {} are now reciprocal friends.".format(toon.getName(), other.getName())
 
 
+class Petbrain(MagicWord):
+    """Read-only live evidence for one generated pet's peer registration."""
+    desc = ("Reports whether the invoker's generated pet has registered one "
+            "peer pet as nearby/aware with its normal chase and flee goals.")
+    execLocation = MagicWordConfig.EXEC_LOC_SERVER
+    accessLevel = 'ADMIN'
+    arguments = [("peerPetId", int, True)]
+
+    def handleWord(self, invoker, avId, toon, *args):
+        from toontown.pets import PetBrain
+
+        petId = int(toon.getPetId())
+        peerPetId = int(args[0])
+        pet = self.air.doId2do.get(petId)
+        peer = self.air.doId2do.get(peerPetId)
+        if pet is None or pet.__class__.__name__ != 'DistributedPetAI':
+            return "Pet {} is not generated on this AI.".format(petId)
+        if peer is None or peer.__class__.__name__ != 'DistributedPetAI':
+            return "Peer pet {} is not generated on this AI.".format(peerPetId)
+        if petId == peerPetId:
+            return "Specify another generated pet."
+
+        brain = getattr(pet, 'brain', None)
+        if brain is None or not brain.started:
+            return "Pet {} has no active brain.".format(petId)
+        goals = brain.doId2goals.get(peerPetId, ())
+        goalNames = [goal.__class__.__name__ for goal in goals]
+        focus = brain.getFocus()
+        focusId = getattr(focus, 'doId', 0) if focus is not None else 0
+        primary = brain.goalMgr.primaryGoal
+        primaryName = primary.__class__.__name__ if primary is not None else 'None'
+        evidence = ("PET_BRAIN_PROBE pet={} peer={} nearby={} aware={} chase={} "
+                    "flee={} looker={} lookee={} focus={} primary={}").format(
+            petId, peerPetId,
+            int(peerPetId in brain.nearbyAvs),
+            int(peerPetId in brain.avAwareness),
+            int('ChaseAvatar' in goalNames),
+            int('FleeFromAvatar' in goalNames),
+            int(peerPetId in brain.getAvIdsLookingAtUs()),
+            int(peerPetId in brain.getAvIdsWeAreLookingAt()),
+            focusId, primaryName)
+        PetBrain.PetBrain.notify.info(evidence)
+        return evidence
+
+
 class Pet(MagicWord):
     desc = ("'info' prints the invoker's petId and, when the pet is "
             "generated, its name, dominant mood and traits; 'adopt [seed]' "
