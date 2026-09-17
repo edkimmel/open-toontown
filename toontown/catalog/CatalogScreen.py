@@ -25,6 +25,21 @@ CatalogPanelColors = {CatalogItemTypes.FURNITURE_ITEM: Vec4(0.733, 0.78, 0.933, 
  CatalogItemTypes.WALLPAPER_ITEM: Vec4(0.749, 0.984, 0.608, 1.0),
  CatalogItemTypes.WINDOW_ITEM: Vec4(0.827, 0.91, 0.659, 1.0)}
 
+
+def getAstronGiftAvatar(cr, friendId):
+    """Return existing friend details without emitting legacy client messages.
+
+    Astron's ClientAgent has no CLIENT_GET_AVATAR_DETAILS (14/15).  The
+    FriendManager's supported getFriendsListResponse already caches an
+    offline friend's name/DNA in ``friendsMap``; a generated friend DO is
+    richer and wins when one is available.  Both are sufficient for the
+    catalog's recipient selector, whose purchase request carries friendId.
+    """
+    if friendId in cr.doId2do:
+        return cr.doId2do[friendId]
+    return cr.friendsMap.get(friendId)
+
+
 class CatalogScreen(DirectFrame):
     notify = DirectNotifyGlobal.directNotify.newCategory('CatalogScreen')
 
@@ -52,6 +67,7 @@ class CatalogScreen(DirectFrame):
         self.textDownColor = Vec4(0.5, 0.9, 1, 1)
         self.textDisabledColor = Vec4(0.4, 0.8, 0.4, 1)
         self.giftAvatar = None
+        self.giftAvatarIsTemporary = 0
         self.gotAvatar = 0
         self.allowGetDetails = 1
         self.load(guiItems, guiButton, guiBack)
@@ -802,7 +818,7 @@ class CatalogScreen(DirectFrame):
         taskMgr.remove('clarabelleGreeting')
         taskMgr.remove('clarabelleHelpText1')
         taskMgr.remove('clarabelleAskAnythingElse')
-        if self.giftAvatar:
+        if self.giftAvatar and self.giftAvatarIsTemporary:
             base.cr.cancelAvatarDetailsRequest(self.giftAvatar)
         self.hide()
         self.destroy()
@@ -838,11 +854,7 @@ class CatalogScreen(DirectFrame):
         if self.responseDialog:
             self.responseDialog.cleanup()
             self.responseDialog = None
-        if self.giftAvatar:
-            if hasattr(self.giftAvatar, 'doId'):
-                self.giftAvatar.delete()
-            else:
-                self.giftAvatar = None
+        self.__clearGiftAvatar()
         return
 
     def unloadClarabelle(self):
@@ -857,7 +869,7 @@ class CatalogScreen(DirectFrame):
         del self.clarabelle
 
     def hangUp(self):
-        if hasattr(self, 'giftAvatar') and self.giftAvatar:
+        if self.giftAvatarIsTemporary and hasattr(self, 'giftAvatar') and self.giftAvatar:
             self.giftAvatar.disable()
         self.setClarabelleChat(random.choice(TTLocalizer.CatalogGoodbyeList))
         self.setPageIndex(-1)
@@ -1044,11 +1056,25 @@ class CatalogScreen(DirectFrame):
             CatalogScreen.notify.warning('smashing requests')
         if self.frienddoId and self.allowGetDetails:
             if self.giftAvatar:
-                if hasattr(self.giftAvatar, 'doId'):
-                    self.giftAvatar.disable()
-                    self.giftAvatar.delete()
-                self.giftAvatar = None
+                self.__clearGiftAvatar()
+            if ConfigVariableBool('astron-support', True).getValue():
+                self.giftAvatar = getAstronGiftAvatar(base.cr, self.frienddoId)
+                self.giftAvatarIsTemporary = 0
+                if self.giftAvatar is None:
+                    # Do not fall through to message 14.  Under Astron, the
+                    # FriendManager cache is the supported detail source.
+                    CatalogScreen.notify.warning('No cached details for gift friend %s.' %
+                                                 self.frienddoId)
+                    self.gotAvatar = 0
+                    self.scrollList['state'] = DGG.NORMAL
+                    return
+                self.gotAvatar = 1
+                self.allowGetDetails = 1
+                self.scrollList['state'] = DGG.NORMAL
+                self.update()
+                return
             self.giftAvatar = DistributedToon.DistributedToon(base.cr)
+            self.giftAvatarIsTemporary = 1
             self.giftAvatar.doId = self.frienddoId
             self.giftAvatar.forceAllowDelayDelete()
             self.giftAvatar.generate()
@@ -1056,6 +1082,14 @@ class CatalogScreen(DirectFrame):
             self.gotAvatar = 0
             self.allowGetDetails = 0
             self.scrollList['state'] = DGG.DISABLED
+        return
+
+    def __clearGiftAvatar(self):
+        if self.giftAvatar and self.giftAvatarIsTemporary:
+            self.giftAvatar.disable()
+            self.giftAvatar.delete()
+        self.giftAvatar = None
+        self.giftAvatarIsTemporary = 0
         return
 
     def __handleAvatarDetails(self, gotData, avatar, dclass):
