@@ -326,12 +326,20 @@ class PetBrain(DirectObject.DirectObject, CPetBrain):
                     if avId in (self.pet.ownerId, self.pet.estateOwnerId):
                         if oldZoneId in self.pet.estateZones and newZoneId not in self.pet.estateZones:
                             if avId == self.pet.ownerId:
-                                self._handleOwnerLeave()
+                                # A guest pet is activated into the shared
+                                # EstateWorld, not owned by the visit.  Keep
+                                # it alive when its visiting toon leaves so
+                                # repeat admission reuses the same active
+                                # DBSS object; the estate owner's departure
+                                # below still ends every pet's estate stay.
+                                if self.pet.ownerId == self.pet.estateOwnerId:
+                                    self._handleOwnerLeave()
                             else:
                                 self._handleEstateOwnerLeave()
         elif action == OA.LOGOUT:
             if avId == self.pet.ownerId:
-                self._handleOwnerLeave()
+                if self.pet.ownerId == self.pet.estateOwnerId:
+                    self._handleOwnerLeave()
             elif avId == self.pet.estateOwnerId:
                 self._handleEstateOwnerLeave()
         elif action == OA.FEED:
