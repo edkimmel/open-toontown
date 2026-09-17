@@ -988,6 +988,9 @@ class DistributedPetAI(DistributedSmoothNodeAI.DistributedSmoothNodeAI, PetLooke
             self.notify.debug('handleAvPetInteraction() avatarInteract was busy or unhappy')
 
     def __petMovieStart(self, avId):
+        # The session timeout only bounds the approach.  Once the movie has
+        # actually started, its own completion task owns the full duration.
+        taskMgr.remove(self.uniqueName('PetMovieTimeout'))
         self.d_setMovie(avId, self.movieMode)
         time = self.movieTimeSwitch.get(self.movieMode)
         taskMgr.doMethodLater(time, self.__petMovieComplete, self.uniqueName('PetMovieComplete'))
