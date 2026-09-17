@@ -445,6 +445,7 @@ class DistributedPetAI(DistributedSmoothNodeAI.DistributedSmoothNodeAI, PetLooke
             for aptitude in aptitudes:
                 pass
 
+        aptitudes = list(aptitudes)
         while len(aptitudes) < len(PetTricks.Tricks) - 1:
             aptitudes.append(0.0)
 
@@ -453,8 +454,9 @@ class DistributedPetAI(DistributedSmoothNodeAI.DistributedSmoothNodeAI, PetLooke
     def setTrickAptitudes(self, aptitudes, local = 0):
         if not local:
             DistributedPetAI.notify.debug('setTrickAptitudes: %s' % aptitudes)
-        while len(self.trickAptitudes) < len(PetTricks.Tricks) - 1:
-            self.trickAptitudes.append(0.0)
+        aptitudes = list(aptitudes)
+        while len(aptitudes) < len(PetTricks.Tricks) - 1:
+            aptitudes.append(0.0)
 
         self.trickAptitudes = aptitudes
 

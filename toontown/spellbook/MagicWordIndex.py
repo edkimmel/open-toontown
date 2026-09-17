@@ -1922,6 +1922,28 @@ class Petmood(MagicWord):
         return "Set {}'s pet {} to {}.".format(toon.getName(), component, value)
 
 
+class Pettrick(MagicWord):
+    """Ask the invoker's generated pet for one normal trick (E5.I2)."""
+    execLocation = MagicWordConfig.EXEC_LOC_SERVER
+    accessLevel = 'ADMIN'
+    arguments = [('trick', int, True)]
+
+    def handleWord(self, invoker, avId, toon, *args):
+        from toontown.pets import PetObserve, PetTricks
+
+        trickId = args[0]
+        if not 0 <= trickId < PetTricks.Tricks.BALK:
+            return 'Specify a trick number between 0 and {}.'.format(
+                PetTricks.Tricks.BALK - 1)
+        petId = toon.getPetId()
+        pet = self.air.doId2do.get(petId)
+        if pet is None or pet.__class__.__name__ != 'DistributedPetAI':
+            return "{}'s pet is not generated.".format(toon.getName())
+        PetObserve.send(toon.zoneId,
+                        PetObserve.TrickRequestObserve(trickId, avId))
+        return "Asked {} to perform trick {}.".format(pet.getPetName(), trickId)
+
+
 class SetSpeedChatStyle(MagicWord):
     # The first version of this word did `from toontown.shtiker.OptionsPage
     # import speedChatStyles` to bounds-check/name the index -- OptionsPage.py is
