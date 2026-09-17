@@ -100,7 +100,7 @@ class SpecialsPhoto(NodePath):
         self.type = None
         del self.soundTrack
         del self.track
-        self.parent = None
+        self._parent = None
         return
 
     def update(self, type):
