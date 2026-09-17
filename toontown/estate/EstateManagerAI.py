@@ -21,6 +21,9 @@ class EstateManagerAI(DistributedObjectAI):
         # accountId -> live EstateWorld, and the avatars waiting for one
         self.worlds = {}
         self.pendingWorlds = {}
+        # Provisioning is account-scoped but setEstateZone is avatar-scoped.
+        # The first waiter can be a visitor, so retain the requested owner.
+        self.pendingWorldOwners = {}
         self.zoneId2world = {}
         # accountId -> the estate doId whose delete we are still waiting for
         self.closingWorlds = {}
@@ -49,19 +52,39 @@ class EstateManagerAI(DistributedObjectAI):
     def getEstateZone(self, avId, name):
         senderId = self.air.getAvatarIdFromSender()
         self.notify.debug('getEstateZone from %s for avId %s name %s' % (senderId, avId, name))
-        if avId != senderId:
-            # Visiting somebody else's estate is not supported yet.
-            return
-
         sender = self.air.doId2do.get(senderId)
         if sender is None:
             self.notify.warning('Estate request from an unknown avatar %s!' % senderId)
             return
 
-        accountId = sender.DISLid
-        if not accountId:
+        senderAccountId = sender.DISLid
+        if not senderAccountId:
             self.notify.warning('Avatar %s has no account!' % senderId)
             return
+
+        target = self.air.doId2do.get(avId)
+        if target is None:
+            # An offline or foreign-district target must not cause a database
+            # provision.  Only live objects in this AI can be visited.
+            self.notify.warning('Estate request for an unknown avatar %s!' % avId)
+            return
+
+        accountId = target.DISLid
+        if not accountId:
+            self.notify.warning('Estate owner %s has no account!' % avId)
+            return
+
+        if accountId != senderAccountId:
+            # The client passes a blank name for visits, and either spelling is
+            # supplied by the client.  The reciprocal live friend records are
+            # the authorization boundary instead.
+            senderFriends = sender.getFriendsList() or []
+            targetFriends = target.getFriendsList() or []
+            if (not any(pair[0] == avId for pair in senderFriends) or
+                    not any(pair[0] == senderId for pair in targetFriends)):
+                self.notify.warning('Estate request from %s for non-friend %s!' %
+                                    (senderId, avId))
+                return
 
         world = self.worlds.get(accountId)
         if world is not None:
@@ -78,6 +101,7 @@ class EstateManagerAI(DistributedObjectAI):
             return
 
         self.pendingWorlds[accountId] = [senderId]
+        self.pendingWorldOwners[accountId] = avId
         self.__watchAvatar(senderId)
         if accountId in self.closingWorlds:
             # The previous visit is still being torn down; __worldClosed opens
@@ -94,14 +118,16 @@ class EstateManagerAI(DistributedObjectAI):
         if not estateId:
             self.notify.warning('Account %s has no estate to open!' % accountId)
             self.pendingWorlds.pop(accountId, None)
+            self.pendingWorldOwners.pop(accountId, None)
             return
 
         waiting = self.pendingWorlds.get(accountId) or []
-        ownerId = waiting[0] if waiting else 0
+        ownerId = self.pendingWorldOwners.get(accountId, 0)
         EstateWorldOperation(self, EstateWorld(accountId, ownerId, estateId, houseIds)).start()
 
     def worldReady(self, world):
         waiting = self.pendingWorlds.pop(world.accountId, [])
+        self.pendingWorldOwners.pop(world.accountId, None)
         if world.zoneId is None:
             self.notify.warning('Could not open the estate for account %s!' % world.accountId)
             return
