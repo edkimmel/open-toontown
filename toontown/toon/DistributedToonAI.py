@@ -3112,6 +3112,7 @@ class DistributedToonAI(DistributedPlayerAI.DistributedPlayerAI, DistributedSmoo
         def exitEstate(self, ownerId = None, zoneId = None):
             DistributedToonAI.notify.debug('exitEstate: %s %s %s' % (self.doId, ownerId, zoneId))
             DistributedToonAI.notify.debug('current zone: %s' % self.zoneId)
+            self._clearOtherLookers()
             self.exitPetLook()
             taskMgr.remove(self._getMoveSphereTaskName())
             self.collNodePath.removeNode()
