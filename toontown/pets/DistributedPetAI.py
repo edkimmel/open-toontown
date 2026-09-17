@@ -563,6 +563,7 @@ class DistributedPetAI(DistributedSmoothNodeAI.DistributedSmoothNodeAI, PetLooke
         taskMgr.remove(self.uniqueName('PetMovieWait'))
         taskMgr.remove(self.uniqueName('PetMovieClear'))
         taskMgr.remove(self.uniqueName('PetMovieComplete'))
+        taskMgr.remove(self.uniqueName('PetMovieTimeout'))
         taskMgr.remove(self.getLockMoveTaskName())
         taskMgr.remove(self.getMoveTaskName())
         if hasattr(self, 'zoneId'):
@@ -775,6 +776,13 @@ class DistributedPetAI(DistributedSmoothNodeAI.DistributedSmoothNodeAI, PetLooke
             self.startLockPetMove(avatar.doId)
             self.brain.observe(PetObserve.PetActionObserve(PetObserve.Actions.FEED, avatar.doId))
             self.feedLogger.addEvent()
+        else:
+            # avatarInteract has already locked this session.  A broke toon
+            # never reaches __petMovieStart, so it needs the same explicit
+            # release the busy-refusal path gives the client.
+            self.sendClearMovie()
+            self.movieMode = None
+            self.freeAvatar(avatar.doId)
 
     def scratch(self, avatar):
         self.startLockPetMove(avatar.doId)
@@ -949,6 +957,7 @@ class DistributedPetAI(DistributedSmoothNodeAI.DistributedSmoothNodeAI, PetLooke
         if self.air != None:
             self.ignore(self.air.getAvatarExitEvent(self.busy))
         taskMgr.remove(self.uniqueName('clearMovie'))
+        taskMgr.remove(self.uniqueName('PetMovieTimeout'))
         self.busy = 0
         self.d_setMovie(0, PetConstants.PET_MOVIE_CLEAR)
         return Task.done
@@ -966,6 +975,11 @@ class DistributedPetAI(DistributedSmoothNodeAI.DistributedSmoothNodeAI, PetLooke
         if self.avatarInteract(avId):
             self.notify.debug('handleAvPetInteraction() avatarInteract calling callback')
             self.movieMode = mode
+            # Approaches can stop before __petMovieStart (for example when a
+            # toon walks away).  Bound the whole session by its established
+            # movie duration plus a small scheduling margin; normal cleanup
+            # removes this task when the movie completes or the avatar exits.
+            taskMgr.doMethodLater(self.movieTimeSwitch[mode] + 1.0, self.__petMovieTimeout, self.uniqueName('PetMovieTimeout'), [avId])
             callback = {PetConstants.PET_MOVIE_SCRATCH: self.scratch,
              PetConstants.PET_MOVIE_FEED: self.feed,
              PetConstants.PET_MOVIE_CALL: self.call}.get(mode)
@@ -977,6 +991,17 @@ class DistributedPetAI(DistributedSmoothNodeAI.DistributedSmoothNodeAI, PetLooke
         self.d_setMovie(avId, self.movieMode)
         time = self.movieTimeSwitch.get(self.movieMode)
         taskMgr.doMethodLater(time, self.__petMovieComplete, self.uniqueName('PetMovieComplete'))
+
+    def __petMovieTimeout(self, avId, task = None):
+        if self.busy == avId:
+            if self.isLockMoverEnabled():
+                self.disableLockMover()
+            if self.isLockedDown():
+                self.unlockPet()
+            self.sendClearMovie()
+            self.movieMode = None
+            self.freeAvatar(avId)
+        return Task.done
 
     def __petMovieComplete(self, task = None):
         self.disableLockMover()
