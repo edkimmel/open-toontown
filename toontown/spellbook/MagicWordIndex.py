@@ -928,7 +928,8 @@ class Garden(MagicWord):
             "matching plot of the invoker's own estate, 'grow [level]' maxes every currently "
             "planted item's growth and water levels, 'reset' empties every planted hard "
             "point back to a bare plot, 'collection <n>' sets the flower collection to "
-            "exactly n distinct varieties without touching the flower basket.")
+            "exactly n distinct varieties without touching the flower basket, or "
+            "'special toonstatuary' grants the one special needed for the real toon-statue picker.")
     execLocation = MagicWordConfig.EXEC_LOC_SERVER
     accessLevel = 'ADMIN'
     arguments = [("command", str, False, ''), ("option", str, False, '')]
@@ -943,6 +944,8 @@ class Garden(MagicWord):
     PLANT_TREE_LEVEL = 0
     PLANT_STATUARY_SPECIES = 200
     PLANT_STATUARY_SPECIAL = 100
+    TOON_STATUARY_SPECIAL_NAME = 'toonstatuary'
+    TOON_STATUARY_SPECIAL = 105
 
     def handleWord(self, invoker, avId, toon, *args):
         from toontown.estate import GardenGlobals
@@ -960,6 +963,8 @@ class Garden(MagicWord):
             return self._reset(toon)
         if command == 'collection':
             return self._collection(toon, option)
+        if command == 'special':
+            return self._special(toon, option)
 
         # Plain `~garden [shovelSkill]` -- unchanged from before this task.
         try:
@@ -998,6 +1003,24 @@ class Garden(MagicWord):
         toon.b_setFlowerCollection([f[0] for f in chosen], [f[1] for f in chosen])
         return "Set {}'s flower collection to {} distinct variet{}.".format(
             toon.getName(), count, 'y' if count == 1 else 'ies')
+
+    def _special(self, toon, option):
+        """Idempotently seed the one special used by the real toon-statue UI.
+
+        Keep this intentionally narrower than a generic inventory editor: the
+        capture needs GardenGlobals recipe 1005's special 105, and the client
+        must still choose species/DNA through DistributedGardenPlot's normal
+        PlantingGUI then ToonStatueSelectionGUI path.
+        """
+        if option != self.TOON_STATUARY_SPECIAL_NAME:
+            return "Specify ~garden special toonstatuary."
+        if any(index == self.TOON_STATUARY_SPECIAL and count > 0
+               for index, count in toon.getGardenSpecials()):
+            return "{} already has toon statuary special {}.".format(
+                toon.getName(), self.TOON_STATUARY_SPECIAL)
+        toon.addGardenItem(self.TOON_STATUARY_SPECIAL, 1)
+        return "Seeded {} with toon statuary special {}.".format(
+            toon.getName(), self.TOON_STATUARY_SPECIAL)
 
     def _residentHouse(self, toon):
         """The invoker's own live house and estate, once its garden has been
