@@ -929,7 +929,8 @@ class Garden(MagicWord):
             "planted item's growth and water levels, 'reset' empties every planted hard "
             "point back to a bare plot, 'collection <n>' sets the flower collection to "
             "exactly n distinct varieties without touching the flower basket, or "
-            "'special toonstatuary' grants the one special needed for the real toon-statue picker.")
+            "'special toonstatuary' grants the one special needed for the real toon-statue picker; "
+            "'shovel gold' seeds the exact eight-box gold shovel prerequisite.")
     execLocation = MagicWordConfig.EXEC_LOC_SERVER
     accessLevel = 'ADMIN'
     arguments = [("command", str, False, ''), ("option", str, False, '')]
@@ -965,6 +966,8 @@ class Garden(MagicWord):
             return self._collection(toon, option)
         if command == 'special':
             return self._special(toon, option)
+        if command == 'shovel':
+            return self._shovel(toon, option, GardenGlobals)
 
         # Plain `~garden [shovelSkill]` -- unchanged from before this task.
         try:
@@ -984,6 +987,35 @@ class Garden(MagicWord):
         toon.b_setShovelSkill(shovelSkill)
         toon.b_setFlowerCollection([f[0] for f in flowers], [f[1] for f in flowers])
         return f"Started {toon.getName()}'s garden with {len(flowers)} flowers and shovel skill {shovelSkill}."
+
+    def _shovel(self, toon, option, gardenGlobals):
+        """Seed only the gold-shovel capability required by recipe 1005.
+
+        ``getShovelPower`` counts completed predecessor tiers plus the current
+        tier's boxes.  Derive the first skill value that awards every gold-tier
+        box from the authoritative attributes rather than hard-coding 320;
+        it remains strictly below the gold promotion threshold.
+        """
+        if option != 'gold':
+            return "Specify ~garden shovel gold."
+        goldShovel = gardenGlobals.SHOVEL_GOLD
+        goldAttrib = gardenGlobals.ShovelAttributes[goldShovel]
+        goldBoxes = goldAttrib['numBoxes']
+        skillPerBox = goldAttrib['skillPts'] // goldBoxes
+        goldSkill = skillPerBox * (goldBoxes - 1)
+        if not 0 <= goldSkill < goldAttrib['skillPts'] or (
+                gardenGlobals.getShovelPower(goldShovel, goldSkill) !=
+                gardenGlobals.getNumberOfShovelBoxes()):
+            return "GardenGlobals cannot derive the gold shovel's full box capability."
+
+        if not toon.getGardenStarted():
+            toon.b_setGardenStarted(1)
+        if toon.getShovel() != goldShovel:
+            toon.b_setShovel(goldShovel)
+        if toon.getShovelSkill() != goldSkill:
+            toon.b_setShovelSkill(goldSkill)
+        return "Set {}'s shovel to gold at skill {} ({} boxes).".format(
+            toon.getName(), goldSkill, gardenGlobals.getNumberOfShovelBoxes())
 
     def _collection(self, toon, option):
         pairs = _flowerVarietyPairs()
