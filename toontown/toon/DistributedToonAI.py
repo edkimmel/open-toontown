@@ -3061,7 +3061,14 @@ class DistributedToonAI(DistributedPlayerAI.DistributedPlayerAI, DistributedSmoo
 
         def setPetTutorialDone(self, bDone):
             self.notify.debug('setPetTutorialDone')
+            if getattr(self, 'bPetTutorialDone', False):
+                return
             self.bPetTutorialDone = True
+            # This handler receives the client's ``ownsend``.  It cannot use
+            # the inherited b_set helper: that helper calls this override
+            # again.  Sending the db field directly broadcasts and persists
+            # the one-way tutorial completion without recursion.
+            self.sendUpdate('setPetTutorialDone', [1])
 
         def setFishBingoTutorialDone(self, bDone):
             self.notify.debug('setFishBingoTutorialDone')
