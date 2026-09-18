@@ -48,10 +48,11 @@ class EstateHood(Hood.Hood):
         return
 
     def enter(self, requestStatus):
-        hoodId = requestStatus['hoodId']
-        zoneId = requestStatus['zoneId']
         self.accept('kickToPlayground', self.kickToPlayground)
-        self.fsm.request(requestStatus['loader'], [requestStatus])
+        # Hood.enter creates the shared title widget before safe-zone entry.
+        # EstateHood still uses the normal title sequence below, so bypassing
+        # it leaves spawnTitleText with no OnscreenText to animate.
+        Hood.Hood.enter(self, requestStatus)
 
     def exit(self):
         if self.loader:
@@ -67,7 +68,7 @@ class EstateHood(Hood.Hood):
             self.loader.load()
 
     def spawnTitleText(self, zoneId):
-        pass
+        Hood.Hood.spawnTitleText(self, zoneId)
 
     def hideTitleTextTask(self, task):
         return Task.done
