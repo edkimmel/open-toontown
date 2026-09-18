@@ -2,6 +2,7 @@ from direct.directnotify import DirectNotifyGlobal
 from direct.distributed.DistributedObjectAI import DistributedObjectAI
 
 from otp.otpbase import OTPGlobals
+from toontown.pets import PetMood, PetTraits, PetTricks
 
 class FriendManagerAI(DistributedObjectAI):
     """Server half of `otp/friends/FriendManager.py` (dclass
@@ -315,3 +316,177 @@ class FriendManagerAI(DistributedObjectAI):
     def _sendFriendsList(self, avId, errorCode, details):
         self.sendUpdateToAvatarId(avId, 'getFriendsListResponse',
                                   [errorCode, details])
+
+    def _emptyPetDetails(self):
+        return [0, '', 0, 0, []] + [0] * 9 + [0, [], []]
+
+    def _sendPetDetails(self, avId, context, result, details=None):
+        self.sendUpdateToAvatarId(avId, 'ownPetDetailsResponse',
+                                  [context, result,
+                                   details[0] if details else 0,
+                                   details[1:] if details else self._emptyPetDetails()])
+
+    def _petIdFromToonRow(self, dclass, fields):
+        """Return a valid persisted owner-pet link, or raise ``ValueError``.
+
+        Login activates the owner directly on the StateServer; it does not
+        create an avatar in this district AI's ``doId2do``.  A GET_ALL query
+        in an AI repository resolves the stored Toon DC class through its
+        ``AI`` suffix, i.e. ``DistributedToonAI``.  A client-facing global
+        must therefore use that durable owner row after authenticating the
+        sender channel, not a coincidental in-process avatar object.
+        """
+        if dclass != self.air.dclassesByName['DistributedToonAI']:
+            raise ValueError('not a DistributedToonAI row')
+        if not isinstance(fields, dict):
+            raise ValueError('toon fields are not a dictionary')
+        packedPetId = fields.get('setPetId')
+        if (not isinstance(packedPetId, (tuple, list)) or
+                len(packedPetId) != 1):
+            raise ValueError('setPetId is not a one-argument DB field')
+        petId = packedPetId[0]
+        if (not isinstance(petId, int) or isinstance(petId, bool) or
+                petId < 0 or petId > 0xffffffff):
+            raise ValueError('setPetId is outside its DC shape/range')
+        return petId
+
+    def _petDetailsFromFields(self, petId, fields):
+        """Validate then build the fixed DTO from a persisted pet row.
+
+        `queryObject` yields untrusted durable data: do not index a field's
+        tuple until its exact DBSS shape and DC range have been checked.
+        """
+        if not isinstance(fields, dict):
+            raise ValueError('fields are not a dictionary')
+
+        def scalar(name, types, minimum=None, maximum=None):
+            packed = fields.get(name)
+            if not isinstance(packed, (tuple, list)) or len(packed) != 1:
+                raise ValueError('%s is not a one-argument DB field' % name)
+            value = packed[0]
+            if (not isinstance(value, types) or isinstance(value, bool) or
+                    (minimum is not None and value < minimum) or
+                    (maximum is not None and value > maximum)):
+                raise ValueError('%s is outside its DC shape/range' % name)
+            return value
+
+        # A bare atomic `string ... db` field unpacks directly to its string
+        # value.  Setter fields unpack to argument tuples, but passing a tuple
+        # to this field's packer is invalid; do not accept a YAML rendering as
+        # if it were an already-decoded runtime value.
+        dcObjectType = fields.get('DcObjectType')
+        if dcObjectType != 'DistributedPet':
+            raise ValueError('not a DistributedPet row')
+        ownerId = scalar('setOwnerId', int, 1, 0xffffffff)
+        petName = scalar('setPetName', str)
+        traitSeed = scalar('setTraitSeed', int, 0, 0xffffffff)
+        safeZone = scalar('setSafeZone', int, 0, 0xffffffff)
+        lastSeenTimestamp = scalar('setLastSeenTimestamp', int, 0, 0xffffffff)
+
+        traitFields = ['set%s%s' % (name[0].upper(), name[1:])
+                       for name in PetTraits.getTraitNames()]
+        styleFields = ['setHead', 'setEars', 'setNose', 'setTail',
+                       'setBodyTexture', 'setColor', 'setColorScale',
+                       'setEyeColor', 'setGender']
+        moodFields = ['set%s%s' % (name[0].upper(), name[1:])
+                      for name in PetMood.PetMood.Components]
+        # The DC struct retains the existing fixed-point qualifiers, so Panda
+        # packers receive the same Python floats as the pet's DB fields.
+        traits = [scalar(name, (int, float), 0.0, 1.0) for name in traitFields]
+        if len(traits) != len(PetTraits.getTraitNames()):
+            raise ValueError('wrong trait cardinality')
+        styleRanges = [(-1, 1), (-1, 4), (-1, 3), (-1, 6), (0, 6),
+                       (0, 25), (0, 8), (0, 5), (0, 1)]
+        styles = [scalar(name, int, *styleRanges[index])
+                  for index, name in enumerate(styleFields)]
+        moods = [scalar(name, (int, float), 0.0, 1.0) for name in moodFields]
+        if len(moods) != len(PetMood.PetMood.Components):
+            raise ValueError('wrong mood cardinality')
+        packedAptitudes = fields.get('setTrickAptitudes')
+        if (not isinstance(packedAptitudes, (tuple, list)) or
+                len(packedAptitudes) != 1 or
+                not isinstance(packedAptitudes[0], (tuple, list)) or
+                len(packedAptitudes[0]) > len(PetTricks.Tricks) - 1):
+            raise ValueError('invalid trick aptitude cardinality')
+        aptitudes = list(packedAptitudes[0])
+        if any((not isinstance(value, (int, float)) or isinstance(value, bool) or
+                value < 0.0 or value > 1.0) for value in aptitudes):
+            raise ValueError('invalid trick aptitude value')
+        return [petId, ownerId, petName, traitSeed, safeZone, traits] + styles + \
+               [lastSeenTimestamp, moods, aptitudes]
+
+    def requestOwnPetDetails(self, context):
+        """Return only the authenticated sender's currently linked pet.
+
+        The request intentionally carries no pet or avatar id.  The async DB
+        callbacks read the sender's durable Toon row before and after the pet
+        lookup so an adoption/return race cannot disclose or attach a stale
+        pet snapshot.
+        """
+        avId = self.air.getAvatarIdFromSender()
+
+        def fail(reason):
+            # This endpoint intentionally gives the client the same generic
+            # failure for every rejection.  Keep enough server-only context
+            # to diagnose a DB/StateServer integration mismatch without
+            # logging any row data.
+            self.notify.warning(
+                'owner pet details rejected avId=%s context=%s reason=%s' %
+                (avId, context, reason))
+            self._sendPetDetails(avId, context, 0)
+
+        def readToonPetId(phase, toonDclass, toonFields):
+            if toonDclass is None or toonFields is None:
+                return None, '%s-toon-missing' % phase
+            if toonDclass != self.air.dclassesByName['DistributedToonAI']:
+                return None, '%s-toon-dclass' % phase
+            try:
+                return self._petIdFromToonRow(toonDclass, toonFields), None
+            except (KeyError, IndexError, TypeError, ValueError):
+                return None, '%s-toon-shape' % phase
+
+        def gotInitialToon(toonDclass, toonFields):
+            petId, reason = readToonPetId('initial', toonDclass, toonFields)
+            if reason:
+                fail(reason)
+                return
+            if not petId:
+                fail('initial-toon-no-pet')
+                return
+
+            def gotPet(petDclass, petFields):
+                if petDclass is None or petFields is None:
+                    fail('pet-missing')
+                    return
+                if petDclass != self.air.dclassesByName['DistributedPetAI']:
+                    fail('pet-dclass')
+                    return
+                if not isinstance(petFields, dict):
+                    fail('pet-shape')
+                    return
+                try:
+                    details = self._petDetailsFromFields(petId, petFields)
+                except (KeyError, IndexError, TypeError, ValueError):
+                    fail('pet-shape')
+                    return
+                if details[1] != avId:
+                    fail('pet-owner')
+                    return
+
+                def gotCurrentToon(currentDclass, currentFields):
+                    currentPetId, reason = readToonPetId(
+                        'current', currentDclass, currentFields)
+                    if reason:
+                        fail(reason)
+                        return
+                    if currentPetId != petId:
+                        fail('current-toon-link-changed')
+                        return
+                    self._sendPetDetails(avId, context, 1, details)
+
+                self.air.dbInterface.queryObject(self.air.dbId, avId,
+                                                 gotCurrentToon)
+
+            self.air.dbInterface.queryObject(self.air.dbId, petId, gotPet)
+
+        self.air.dbInterface.queryObject(self.air.dbId, avId, gotInitialToon)

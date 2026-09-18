@@ -827,9 +827,10 @@ class ToontownClientRepository(OTPClientRepository.OTPClientRepository):
                 return 0
 
         if base.wantPets and base.localAvatar.hasPet():
-            print(str(self.friendsMap))
-            print(str(base.localAvatar.getPetId() in self.friendsMap))
-            if (base.localAvatar.getPetId() in self.friendsMap) == None:
+            # ``in`` returns a bool, never None.  Treating a missing owner
+            # pet handle as complete skips the normal friends-map retry and
+            # leaves the real SOS panel with no PETSOS entry.
+            if base.localAvatar.getPetId() not in self.friendsMap:
                 return 0
         return 1
 
@@ -898,6 +899,19 @@ class ToontownClientRepository(OTPClientRepository.OTPClientRepository):
             return
 
         def petDetailsCallback(petAvatar):
+            if petAvatar is None:
+                # A setPetId P -> Q transition can complete P's asynchronous
+                # owner snapshot after Q became current.  Preserve the one
+                # friendsMapComplete callback by attaching it to Q instead of
+                # completing the map against P's failed/stale result.
+                currentPetId = base.localAvatar.getPetId()
+                if currentPetId and currentPetId != doId:
+                    self.addPetToFriendsMap(callback)
+                    return
+                self.notify.warning('Could not fetch the local owner pet details.')
+                if callback:
+                    callback()
+                return
             handle = PetHandle.PetHandle(petAvatar)
             self.friendsMap[doId] = handle
             petAvatar.disable()

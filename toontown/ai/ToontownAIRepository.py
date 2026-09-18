@@ -239,11 +239,19 @@ class ToontownAIRepository(ToontownInternalRepository):
         self.timeManager = TimeManagerAI(self)
         self.timeManager.generateWithRequired(OTP_ZONE_ID_MANAGEMENT)
 
-        # Generate our friend manager at the fixed doId the client expects
-        # (toontown/toonbase/ToontownStart.py, OTP_DO_ID_FRIEND_MANAGER),
-        # same pattern as the other fixed-id managers
-        # (toontown/uberdog/ToontownUDRepository.py:55-60).
-        self.friendManager = self.generateGlobalObject(OTP_DO_ID_FRIEND_MANAGER, 'FriendManager')
+        # FriendManager is a fixed client-facing DO, not merely an AI-local
+        # helper.  ``ConnectionRepository.generateGlobalObject`` only builds
+        # a Python object in this repository's doId table; it does not create
+        # a StateServer object.  A client update to that local-only 4501 is
+        # consequently unroutable.  Put the one fixed instance in the normal
+        # management zone so Astron can validate and route its ``clsend``
+        # requests, while clients continue to construct their existing local
+        # global at the same doId.
+        from otp.friends.FriendManagerAI import FriendManagerAI
+        self.friendManager = FriendManagerAI(self)
+        self.friendManager.generateWithRequiredAndId(
+            OTP_DO_ID_FRIEND_MANAGER, self.district.getDoId(),
+            OTP_ZONE_ID_MANAGEMENT)
 
         # Generate our news manager...
         self.newsManager = NewsManagerAI(self)

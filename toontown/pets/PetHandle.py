@@ -1,5 +1,44 @@
 from toontown.toonbase import ToontownGlobals
-from toontown.pets import PetMood, PetTraits, PetDetail
+from toontown.pets import PetMood, PetTraits
+
+
+class PetDetailsAvatar:
+    """Non-generated owner-pet DTO holder for the Astron FriendManager RPC."""
+
+    def __init__(self, cr, petId, details):
+        (self.ownerId, self.name, self.traitSeed, self.safeZone, traitValues,
+         head, ears, nose, tail, bodyTexture, color, colorScale, eyeColor,
+         gender, self.lastSeenTimestamp, moodValues,
+         self.trickAptitudes) = details
+        self.doId = petId
+        self.style = [head, ears, nose, tail, bodyTexture, color, colorScale,
+                      eyeColor, gender]
+        self.cr = cr
+        self.bFake = True
+        self.traitList = list(traitValues)
+        self.traits = PetTraits.PetTraits(self.traitSeed, self.safeZone,
+                                          traitValueList=self.traitList)
+        self.lastKnownMood = PetMood.PetMood(self)
+        for name, value in zip(PetMood.PetMood.Components, moodValues):
+            self.lastKnownMood.setComponent(name, value, announce=0)
+
+    def getName(self):
+        return self.name
+
+    def getDNA(self):
+        return self.style
+
+    # AvatarDetail callers historically clean up a generated fake pet.  The
+    # DTO is never generated or placed in the CR, so cleanup is deliberately
+    # inert while preserving that caller contract.
+    def disable(self):
+        pass
+
+    def delete(self):
+        pass
+
+    def detectLeaks(self):
+        pass
 
 class PetHandle:
 
@@ -58,8 +97,13 @@ class PetHandle:
 
     def updateMoodFromServer(self, callWhenDone = None):
 
+        # Keep the snapshot DTO importable before GUI-heavy DistributedPet
+        # modules load.  This legacy detail helper is only needed on demand.
+        from toontown.pets import PetDetail
+
         def handleGotDetails(avatar, callWhenDone = callWhenDone):
-            self._grabMood(avatar)
+            if avatar is not None:
+                self._grabMood(avatar)
             if callWhenDone:
                 callWhenDone()
 

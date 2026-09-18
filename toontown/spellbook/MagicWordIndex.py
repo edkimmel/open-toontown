@@ -439,6 +439,27 @@ class Deliver(MagicWord):
         toon._DistributedToonAI__deliverBothPurchases(None)
         return "Delivered {} item(s) to {}.".format(count, toon.getName())
 
+class CatalogNext(MagicWord):
+    """Dev-only catalog issue advance; deliberately cannot target another Toon."""
+    # ``MagicWord.__init__`` automatically registers the lower-cased class
+    # name (``catalognext``); only add the human-friendly extra alias here.
+    aliases = ["nextcatalog"]
+    desc = "Dev use only: issues your next catalog now through the normal catalog schedule."
+    administrative = True
+    accessLevel = 'ADMIN'
+    affectRange = [MagicWordConfig.AFFECT_SELF]
+    execLocation = MagicWordConfig.EXEC_LOC_SERVER
+
+    def handleWord(self, invoker, avId, toon, *args):
+        # The spellbook enforces self-only targeting, and using invoker here
+        # retains that safety if this method is ever called directly.
+        air = getattr(invoker, 'air', None)
+        catalogManager = getattr(air, 'catalogManager', None)
+        if catalogManager is None:
+            return "Catalog manager is not available."
+        week = catalogManager.advanceCatalogFor(invoker)
+        return "Issued catalog week {} to {}.".format(week, invoker.getName())
+
 class Furnish(MagicWord):
     desc = "Debug use only: puts a gender-correct closet, a trunk and a bank into the target's house, plus a few plain items and a wallpaper/flooring/moulding/wainscoting/window set in the attic."
     execLocation = MagicWordConfig.EXEC_LOC_SERVER
@@ -2067,6 +2088,47 @@ class Pettrick(MagicWord):
         PetObserve.send(toon.zoneId,
                         PetObserve.TrickRequestObserve(trickId, avId))
         return "Asked {} to perform trick {}.".format(pet.getPetName(), trickId)
+
+
+class Pettrickready(MagicWord):
+    """Read-only readiness evidence for an owner's normal pet trick request."""
+    desc = ("Reports the exact PetBrain admission predicate for the invoker's "
+            "generated pet without sending a trick request.")
+    execLocation = MagicWordConfig.EXEC_LOC_SERVER
+    accessLevel = 'ADMIN'
+    arguments = [('petId', int, True)]
+
+    def handleWord(self, invoker, avId, toon, *args):
+        from toontown.pets import PetBrain
+
+        petId = int(args[0])
+        # The diagnostic is deliberately scoped to the invoker's currently
+        # linked pet.  It must not become a general pet-brain inspection
+        # route for arbitrary generated pets.
+        if int(toon.getPetId()) != petId:
+            return 'Pet {} is not the invoker\'s owned pet.'.format(petId)
+        pet = self.air.doId2do.get(petId)
+        if pet is None or pet.__class__.__name__ != 'DistributedPetAI':
+            return 'Pet {} is not generated on this AI.'.format(petId)
+        if pet.getOwnerId() != avId:
+            return 'Pet {} is not owned by toon {}.'.format(petId, avId)
+
+        brain = getattr(pet, 'brain', None)
+        if brain is None or not brain.started:
+            return 'Pet {} has no active brain.'.format(petId)
+
+        # `_handleDoTrick` resolves this same channel at dispatch time.  A
+        # stale magic-word target is therefore not ready even if the pet
+        # still happens to retain its old looker entry.
+        avatarLive = int(self.air.doId2do.get(avId) is toon)
+        lookedAt = int(brain.lookedAtBy(avId))
+        busy = int(brain.goalMgr.hasTrickGoal())
+        ready = int(bool(avatarLive and lookedAt and not busy))
+        evidence = ('PET_TRICK_READY pet={} toon={} avatarLive={} lookedAt={} '
+                    'busy={} ready={}').format(petId, avId, avatarLive,
+                                                 lookedAt, busy, ready)
+        PetBrain.PetBrain.notify.info(evidence)
+        return evidence
 
 
 class SetSpeedChatStyle(MagicWord):

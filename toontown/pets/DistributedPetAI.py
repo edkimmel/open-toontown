@@ -436,6 +436,13 @@ class DistributedPetAI(DistributedSmoothNodeAI.DistributedSmoothNodeAI, PetLooke
     def getTrickAptitudes(self):
         return self.trickAptitudes
 
+    def _normalizeTrickAptitudes(self, aptitudes):
+        """Keep only the seven playable trick slots (BALK has no aptitude)."""
+        aptitudes = list(aptitudes)[:len(PetTricks.Tricks) - 1]
+        while len(aptitudes) < len(PetTricks.Tricks) - 1:
+            aptitudes.append(0.0)
+        return aptitudes
+
     def b_setTrickAptitudes(self, aptitudes):
         self.setTrickAptitudes(aptitudes, local=1)
         self.d_setTrickAptitudes(aptitudes)
@@ -445,20 +452,12 @@ class DistributedPetAI(DistributedSmoothNodeAI.DistributedSmoothNodeAI, PetLooke
             for aptitude in aptitudes:
                 pass
 
-        aptitudes = list(aptitudes)
-        while len(aptitudes) < len(PetTricks.Tricks) - 1:
-            aptitudes.append(0.0)
-
-        self.sendUpdate('setTrickAptitudes', [aptitudes])
+        self.sendUpdate('setTrickAptitudes', [self._normalizeTrickAptitudes(aptitudes)])
 
     def setTrickAptitudes(self, aptitudes, local = 0):
         if not local:
             DistributedPetAI.notify.debug('setTrickAptitudes: %s' % aptitudes)
-        aptitudes = list(aptitudes)
-        while len(aptitudes) < len(PetTricks.Tricks) - 1:
-            aptitudes.append(0.0)
-
-        self.trickAptitudes = aptitudes
+        self.trickAptitudes = self._normalizeTrickAptitudes(aptitudes)
 
     def getTrickAptitude(self, trickId):
         if trickId > len(self.trickAptitudes) - 1:
@@ -528,6 +527,11 @@ class DistributedPetAI(DistributedSmoothNodeAI.DistributedSmoothNodeAI, PetLooke
         self.teleportIn()
         self.handleMoodChange(distribute=0)
         taskMgr.doMethodLater(simbase.petMovePeriod * random.random(), self.move, self.getMoveTaskName())
+        # startPosHprBroadcast sends one full setSmPosHprL update before it
+        # switches to the pet's XYH-only telemetry.  The C++ smooth node
+        # starts its location cache at 0, so seed it from the State Server
+        # ENTER_AI location before that first update reaches clients.
+        self.cnode.setCurrL(self.zoneId)
         self.startPosHprBroadcast()
         self.accept(PetObserve.getEventName(self.zoneId), self.brain.observe)
         self.accept(self.mood.getMoodChangeEvent(), self.handleMoodChange)

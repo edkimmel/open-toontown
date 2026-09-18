@@ -253,6 +253,12 @@ class PetshopGUI(DirectObject):
         def __init__(self, doneEvent):
 
             def showDialog(avatar):
+                # Under Astron the owner-only FriendManager request can fail
+                # (returned/reassigned pet, or disconnect) rather than using
+                # legacy detail datagram 81.  Do not construct a half-dialog.
+                if avatar is None:
+                    messenger.send(doneEvent, [0])
+                    return
                 model = loader.loadModel('phase_4/models/gui/ReturnPet')
                 modelPos = (0, 0, -0.3)
                 modelScale = (0.055, 0.055, 0.055)

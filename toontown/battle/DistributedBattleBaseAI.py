@@ -11,10 +11,12 @@ from direct.fsm import ClassicFSM, State
 from direct.fsm import State
 from direct.task import Task
 from direct.directnotify import DirectNotifyGlobal
-from toontown.ai import DatabaseObject
+from direct.distributed.PyDatagram import PyDatagram
+from direct.distributed.MsgTypes import STATESERVER_OBJECT_DELETE_RAM
 from toontown.toon import DistributedToonAI
 from toontown.toon import InventoryBase
 from toontown.toonbase import ToontownGlobals
+from toontown.pets import DistributedPetProxyAI, PetMood, PetTraits, PetTricks
 import random
 from toontown.toon import NPCToons
 
@@ -75,6 +77,10 @@ class DistributedBattleBaseAI(DistributedObjectAI.DistributedObjectAI, BattleBas
         self.numNPCAttacks = 0
         self.npcAttacks = {}
         self.pets = {}
+        # A proxy is read from the database asynchronously.  Keep one
+        # outstanding read per toon so a double PETSOSINFO does not generate
+        # two objects with the persistent pet's same doId.
+        self._petProxyRequests = {}
         self.fsm = ClassicFSM.ClassicFSM('DistributedBattleAI', [
          State.State('FaceOff', self.enterFaceOff, self.exitFaceOff, [
           'WaitForInput', 'Resume']),
@@ -144,6 +150,7 @@ class DistributedBattleBaseAI(DistributedObjectAI.DistributedObjectAI, BattleBas
             del suit.battleTrap
 
         del self.finishCallback
+        self._petProxyRequests.clear()
         for petProxy in list(self.pets.values()):
             petProxy.requestDelete()
 
@@ -685,6 +692,7 @@ class DistributedBattleBaseAI(DistributedObjectAI.DistributedObjectAI, BattleBas
         if toonId in self.pets:
             self.pets[toonId].requestDelete()
             del self.pets[toonId]
+        self._petProxyRequests.pop(toonId, None)
         self.__removeResponse(toonId)
         self.__removeAdjustingResponse(toonId)
         self.__removeJoinResponses(toonId)
@@ -1115,23 +1123,95 @@ class DistributedBattleBaseAI(DistributedObjectAI.DistributedObjectAI, BattleBas
         if petId == av:
             if toonId not in self.pets:
 
+                if toonId in self._petProxyRequests:
+                    self.notify.debug('requestPetProxy() - read already pending for toon: %d' % toonId)
+                    return
+                self._petProxyRequests[toonId] = petId
+
                 def handleGetPetProxy(success, petProxy, petId=petId, zoneId=zoneId, toonId=toonId):
-                    if success:
-                        if petId not in simbase.air.doId2do:
-                            simbase.air.requestDeleteDoId(petId)
-                        else:
-                            petDO = simbase.air.doId2do[petId]
-                            petDO.requestDelete()
-                            simbase.air.deleteDistObject(petDO)
-                        petProxy.dbObject = 1
+                    # The read can return after a toon has run/left or after
+                    # the battle has begun deletion.  Do not resurrect a
+                    # battle-scoped proxy in either case.
+                    if self._petProxyRequests.get(toonId) != petId:
+                        return
+                    if not success:
+                        del self._petProxyRequests[toonId]
+                        self.notify.warning('error generating petProxy: %s' % petId)
+                        return
+
+                    def clearPendingRead():
+                        if self._petProxyRequests.get(toonId) == petId:
+                            del self._petProxyRequests[toonId]
+
+                    def canGenerateProxy():
+                        if self._petProxyRequests.get(toonId) != petId:
+                            return False
+                        if (self._DOAI_requestedDelete or
+                                self.fsm.getCurrentState().getName() != 'WaitForInput' or
+                                self.activeToons.count(toonId) == 0):
+                            clearPendingRead()
+                            return False
+                        toon = self.getToon(toonId)
+                        if toon == None or toon.getPetId() != petId or toonId in self.pets:
+                            clearPendingRead()
+                            return False
+                        # The requested id came from this authenticated
+                        # toon's current link.  Confirm the queried durable
+                        # record still names that owner before reusing its
+                        # fixed id as a battle-only proxy.
+                        if petProxy.getOwnerId() != toonId:
+                            self.notify.warning('pet proxy owner mismatch: %s' % petId)
+                            clearPendingRead()
+                            return False
+                        return True
+
+                    def generateProxyAfterDelete():
+                        # A local object deletion is asynchronous: handleObjExit
+                        # removes it, then sends this event.  Never reuse the
+                        # id while it is still in the repository table.
+                        if not canGenerateProxy():
+                            return
+                        if petId in self.air.doId2do:
+                            self.notify.warning('pet proxy object still present: %s' % petId)
+                            clearPendingRead()
+                            return
+                        clearPendingRead()
+                        # This is a transient RAM proxy.  Keeping dbObject
+                        # absent makes generateWithRequiredAndId target the
+                        # configured StateServer, not the durable pet channel.
                         petProxy.generateWithRequiredAndId(petId, self.air.districtId, zoneId)
                         petProxy.broadcastDominantMood()
                         self.pets[toonId] = petProxy
-                    else:
-                        self.notify.warning('error generating petProxy: %s' % petId)
+
+                    if not canGenerateProxy():
+                        return
+                    petDO = self.air.doId2do.get(petId)
+                    if petDO is None:
+                        # A local-table miss cannot prove a different AI has
+                        # no RAM object.  Send this owner-verified id's exact
+                        # StateServer delete first; the same connection orders
+                        # it ahead of the following normal RAM generate.
+                        self._requestPetProxyRamDelete(petId)
+                        generateProxyAfterDelete()
+                        return
+                    deleteEvent = petDO.getDeleteEvent()
+                    if deleteEvent is None:
+                        self.notify.warning('pet proxy object has no delete event: %s' % petId)
+                        clearPendingRead()
+                        return
+                    self.acceptOnce(deleteEvent, generateProxyAfterDelete)
+                    petDO.requestDelete()
 
                 self.getPetProxyObject(petId, handleGetPetProxy)
         return
+
+    def _requestPetProxyRamDelete(self, petId):
+        """Issue the exact targeted RAM delete used before fixed-id reuse."""
+        dg = PyDatagram()
+        dg.addServerHeader(petId, self.air.ourChannel,
+                           STATESERVER_OBJECT_DELETE_RAM)
+        dg.addUint32(petId)
+        self.air.send(dg)
 
     def suitCanJoin(self):
         return len(self.suits) < self.maxSuits and self.isJoinable()
@@ -1818,19 +1898,111 @@ class DistributedBattleBaseAI(DistributedObjectAI.DistributedObjectAI, BattleBas
         return None
 
     def getPetProxyObject(self, petId, callback):
-        doneEvent = 'readPet-%s' % self._getNextSerialNum()
-        dbo = DatabaseObject.DatabaseObject(self.air, petId, doneEvent=doneEvent)
-        pet = dbo.readPetProxy()
+        """Read and hydrate a battle-only proxy through Astron's DB API.
 
-        def handlePetProxyRead(dbo, retCode, callback=callback, pet=pet):
-            success = retCode == 0
-            if not success:
-                self.notify.warning('pet DB read failed')
-                pet = None
+        DatabaseObject.readPetProxy used the retired DBSS GET_STORED_VALUES
+        protocol and its per-repository ``dbObjContext`` bookkeeping.  The
+        live Astron repository has neither.  ``queryObject`` gives us decoded
+        DC values, so validate every required persisted field before applying
+        it through the proxy's local setters (never its b_/d_ broadcasters).
+        """
+        completed = [False]
+
+        def finish(success, pet=None):
+            # The database interface normally invokes a query callback once,
+            # but this boundary must not let a duplicate/malformed delivery
+            # create two battle proxies.
+            if completed[0]:
+                return
+            completed[0] = True
             callback(success, pet)
-            return
 
-        self.acceptOnce(doneEvent, handlePetProxyRead)
+        def scalar(fields, name, types, minimum=None, maximum=None):
+            packed = fields.get(name)
+            if not isinstance(packed, (tuple, list)) or len(packed) != 1:
+                raise ValueError('%s is not a one-argument DB field' % name)
+            value = packed[0]
+            if (not isinstance(value, types) or isinstance(value, bool) or
+                    (minimum is not None and value < minimum) or
+                    (maximum is not None and value > maximum)):
+                raise ValueError('%s is outside its DC shape/range' % name)
+            return value
+
+        def handlePetProxyRead(dclass, fields):
+            try:
+                if dclass != self.air.dclassesByName['DistributedPetAI']:
+                    raise ValueError('not a DistributedPetAI row')
+                if not isinstance(fields, dict):
+                    raise ValueError('fields are not a dictionary')
+                # Atomic DB fields unpack to their direct value, unlike
+                # setter fields, whose decoded values are one-argument tuples.
+                if fields.get('DcObjectType') != 'DistributedPet':
+                    raise ValueError('not a DistributedPet row')
+
+                ownerId = scalar(fields, 'setOwnerId', int, 1, 0xffffffff)
+                petName = scalar(fields, 'setPetName', str)
+                traitSeed = scalar(fields, 'setTraitSeed', int, 0, 0xffffffff)
+                safeZone = scalar(fields, 'setSafeZone', int, 0, 0xffffffff)
+                lastSeen = scalar(fields, 'setLastSeenTimestamp', int, 0, 0xffffffff)
+
+                traitNames = PetTraits.getTraitNames()
+                traits = []
+                for traitName in traitNames:
+                    fieldName = 'set%s%s' % (traitName[0].upper(), traitName[1:])
+                    traits.append(scalar(fields, fieldName, (int, float), 0.0, 1.0))
+                if len(traits) != PetTraits.PetTraits.NumTraits:
+                    raise ValueError('wrong trait cardinality')
+
+                styleFields = (('setHead', -1, 1), ('setEars', -1, 4),
+                               ('setNose', -1, 3), ('setTail', -1, 6),
+                               ('setBodyTexture', 0, 6), ('setColor', 0, 25),
+                               ('setColorScale', 0, 8), ('setEyeColor', 0, 5),
+                               ('setGender', 0, 1))
+                style = [scalar(fields, name, int, minimum, maximum)
+                         for name, minimum, maximum in styleFields]
+
+                moods = []
+                for component in PetMood.PetMood.Components:
+                    fieldName = 'set%s%s' % (component[0].upper(), component[1:])
+                    moods.append(scalar(fields, fieldName, (int, float), 0.0, 1.0))
+                if len(moods) != len(PetMood.PetMood.Components):
+                    raise ValueError('wrong mood cardinality')
+
+                packedAptitudes = fields.get('setTrickAptitudes')
+                if (not isinstance(packedAptitudes, (tuple, list)) or
+                        len(packedAptitudes) != 1 or
+                        not isinstance(packedAptitudes[0], (tuple, list)) or
+                        len(packedAptitudes[0]) > len(PetTricks.Tricks) - 1):
+                    raise ValueError('invalid trick aptitude cardinality')
+                aptitudes = list(packedAptitudes[0])
+                if any((not isinstance(value, (int, float)) or isinstance(value, bool) or
+                        value < 0.0 or value > 1.0) for value in aptitudes):
+                    raise ValueError('invalid trick aptitude value')
+
+                pet = DistributedPetProxyAI.DistributedPetProxyAI(self.air)
+                # DatabaseObject.fillin set this before directUpdate; retain
+                # that identity even though generateWithRequiredAndId assigns
+                # it again when the battle accepts the completed read.
+                pet.doId = petId
+                pet.setOwnerId(ownerId)
+                pet.setPetName(petName)
+                pet.setTraitSeed(traitSeed)
+                pet.setSafeZone(safeZone)
+                for traitName, value in zip(traitNames, traits):
+                    pet.__dict__[pet.getSetterName(traitName)](value)
+                for (name, unusedMinimum, unusedMaximum), value in zip(styleFields, style):
+                    getattr(pet, name)(value)
+                pet.setLastSeenTimestamp(lastSeen)
+                for component, value in zip(PetMood.PetMood.Components, moods):
+                    pet.__dict__[pet.getSetterName(component)](value)
+                pet.setTrickAptitudes(aptitudes, local=1)
+            except (AttributeError, KeyError, IndexError, TypeError, ValueError):
+                self.notify.warning('pet DB read failed for proxy: %s' % petId)
+                finish(False)
+                return
+            finish(True, pet)
+
+        self.air.dbInterface.queryObject(self.air.dbId, petId, handlePetProxyRead)
 
     def _getNextSerialNum(self):
         num = self.serialNum

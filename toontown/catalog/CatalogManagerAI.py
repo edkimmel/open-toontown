@@ -64,6 +64,22 @@ class CatalogManagerAI(DistributedObjectAI):
         weeksLate = (now - nextTime) // CatalogWeekMinutes + 1
         self.__issueCatalog(avatar, currentWeek, currentWeek + weeksLate)
 
+    def advanceCatalogFor(self, avatar):
+        """Issue exactly one catalog for an administrator's dev request.
+
+        This deliberately shares ``__issueCatalog`` with normal delivery, so
+        generation, wrapping, notification, and the next scheduled delivery
+        stay identical to a real catalog issue.  An empty schedule is the one
+        normal first issue; every established schedule advances one week.
+        """
+        currentWeek, nextTime = avatar.getCatalogSchedule()
+        if nextTime == 0:
+            self.__startCatalog(avatar)
+            return 1
+        nextWeek = (currentWeek % ToontownGlobals.CatalogNumWeeks) + 1
+        self.__issueCatalog(avatar, currentWeek, nextWeek)
+        return nextWeek
+
     def isItemReleased(self, item):
         for itemList in self.catalogGenerator.getReleasedCatalogList(self.__getNow()):
             if item in itemList:

@@ -47,7 +47,7 @@ from toontown.catalog import CatalogAccessoryItem
 from toontown.minigame import MinigameCreatorAI
 from functools import reduce
 if simbase.wantPets:
-    from toontown.pets import PetLookerAI, PetObserve
+    from toontown.pets import PetLookerAI, PetObserve, PetTricks
 else:
     class PetLookerAI:
         class PetLookerAI:
@@ -168,6 +168,12 @@ class DistributedToonAI(DistributedPlayerAI.DistributedPlayerAI, DistributedSmoo
         self.hpOwnedByBattle = 0
         if simbase.wantPets:
             self.petTrickPhrases = []
+        # These are required Toon DB fields.  Initialise their DB defaults even
+        # when optional pet/Bingo UI is disabled, because DBSS applies required
+        # setters before the object is placed in ``air.doId2do``.
+        self.bPetTutorialDone = False
+        self.bFishBingoTutorialDone = False
+        self.bFishBingoMarkTutorialDone = False
         if simbase.wantBingo:
             self.bingoCheat = False
         self.customMessages = []
@@ -3045,22 +3051,46 @@ class DistributedToonAI(DistributedPlayerAI.DistributedPlayerAI, DistributedSmoo
 
         def setPetTutorialDone(self, bDone):
             self.notify.debug('setPetTutorialDone')
-            if getattr(self, 'bPetTutorialDone', False):
+            if self.air.doId2do.get(self.doId) is not self:
+                # ENTER_AI applies required DB fields before placement.  This
+                # setter also handles the client's ownsend, so hydration must
+                # restore the stored value without echoing a DB update.
+                self.bPetTutorialDone = bool(bDone)
+                return
+            if self.bPetTutorialDone:
                 return
             self.bPetTutorialDone = True
-            # This handler receives the client's ``ownsend``.  It cannot use
-            # the inherited b_set helper: that helper calls this override
-            # again.  Sending the db field directly broadcasts and persists
-            # the one-way tutorial completion without recursion.
+            # This placed-object handler receives the client's ``ownsend``.
+            # It cannot use the inherited b_set helper: that helper calls this
+            # override again.  Sending the DB field directly broadcasts and
+            # persists the one-way tutorial completion without recursion.
             self.sendUpdate('setPetTutorialDone', [1])
 
         def setFishBingoTutorialDone(self, bDone):
             self.notify.debug('setFishBingoTutorialDone')
+            if self.air.doId2do.get(self.doId) is not self:
+                # ENTER_AI applies required DB fields before placement.  This
+                # setter is used for that hydration as well as a client
+                # ownsend, so loading must not echo an already-persisted value.
+                self.bFishBingoTutorialDone = bool(bDone)
+                return
+            if self.bFishBingoTutorialDone:
+                return
             self.bFishBingoTutorialDone = True
+            # Like the adjacent pet-tutorial completion, this ownsend handler
+            # must issue the db field itself; using b_set would re-enter this
+            # handler rather than persist the one-way acknowledgement.
+            self.sendUpdate('setFishBingoTutorialDone', [1])
 
         def setFishBingoMarkTutorialDone(self, bDone):
             self.notify.debug('setFishBingoMarkTutorialDone')
+            if self.air.doId2do.get(self.doId) is not self:
+                self.bFishBingoMarkTutorialDone = bool(bDone)
+                return
+            if self.bFishBingoMarkTutorialDone:
+                return
             self.bFishBingoMarkTutorialDone = True
+            self.sendUpdate('setFishBingoMarkTutorialDone', [1])
 
         def enterEstate(self, ownerId, zoneId):
             DistributedToonAI.notify.debug('enterEstate: %s %s %s' % (self.doId, ownerId, zoneId))
@@ -3112,9 +3142,21 @@ class DistributedToonAI(DistributedPlayerAI.DistributedPlayerAI, DistributedSmoo
             del self.estateZones
             del self._wasInEstate
 
+        def __isAuthorizedPetSpeedChat(self, msgId):
+            """Whether a pet-trick SpeedChat message belongs to this Toon.
+
+            Non-pet SpeedChat keeps its historical PetObserve behavior.  A
+            recognized pet message is an authorization boundary: only the
+            exact trick IDs granted on the required toon field may reach
+            PetObserve (and the associated pet-hate state in setSC).
+            """
+            trickId = PetTricks.ScId2trickId.get(msgId)
+            return trickId is None or trickId in self.petTrickPhrases
+
         def setSC(self, msgId):
             DistributedToonAI.notify.debug('setSC: %s' % msgId)
-            from toontown.pets import PetObserve
+            if not self.__isAuthorizedPetSpeedChat(msgId):
+                return
             PetObserve.send(self.zoneId, PetObserve.getSCObserve(msgId, self.doId))
             if msgId in [21006]:
                 self.setHatePets(1)
@@ -3133,7 +3175,8 @@ class DistributedToonAI(DistributedPlayerAI.DistributedPlayerAI, DistributedSmoo
 
         def setSCCustom(self, msgId):
             DistributedToonAI.notify.debug('setSCCustom: %s' % msgId)
-            from toontown.pets import PetObserve
+            if not self.__isAuthorizedPetSpeedChat(msgId):
+                return
             PetObserve.send(self.zoneId, PetObserve.getSCObserve(msgId, self.doId))
 
     def setHatePets(self, hate):
