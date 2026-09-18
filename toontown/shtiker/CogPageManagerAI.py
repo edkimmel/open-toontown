@@ -52,6 +52,12 @@ class CogPageManagerAI:
     def _recordIndex(toon, record):
         if not isinstance(record, dict) or not isinstance(record.get('type'), str):
             return None
+        # Boss/decorative battle records carry no ordinary Cog-page credit.
+        # Skelecogs intentionally remain eligible when their normal type is
+        # present; the established boss flags disqualify an otherwise valid
+        # type. Other special-Cog flags need a reference contract first.
+        if record.get('isVP') or record.get('isCFO'):
+            return None
         active = record.get('activeToons')
         if active is not None and getattr(toon, 'doId', None) not in active:
             return None
