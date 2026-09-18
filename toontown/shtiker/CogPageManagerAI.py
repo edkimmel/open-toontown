@@ -36,6 +36,7 @@ class CogPageManagerAI:
             if new_status != old_status:
                 statuses[index] = new_status
                 toon.b_setCogStatus(statuses)
+            self._publishRadarUnlocks(toon, counts)
 
     def toonEncounteredCogs(self, toon, suitsEncountered, zoneId):
         for record in suitsEncountered or ():
@@ -68,3 +69,26 @@ class CogPageManagerAI:
         if index >= SuitDNA.suitsPerDept * 4:
             return None
         return index
+
+    @staticmethod
+    def _publishRadarUnlocks(toon, counts):
+        if len(counts) != SuitDNA.suitsPerDept * 4:
+            return
+        radar = list(toon.getCogRadar() or [])
+        building = list(toon.getBuildingRadar() or [])
+        if len(radar) != 4 or len(building) != 4:
+            return
+        changed_radar = False
+        changed_building = False
+        for dept in range(4):
+            base = dept * SuitDNA.suitsPerDept
+            if all(counts[base + i] >= COG_QUOTAS[0][i] for i in range(SuitDNA.suitsPerDept)) and not radar[dept]:
+                radar[dept] = 1
+                changed_radar = True
+            if all(counts[base + i] >= COG_QUOTAS[1][i] for i in range(SuitDNA.suitsPerDept)) and not building[dept]:
+                building[dept] = 1
+                changed_building = True
+        if changed_radar:
+            toon.b_setCogRadar(radar)
+        if changed_building:
+            toon.b_setBuildingRadar(building)
