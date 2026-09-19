@@ -1029,7 +1029,18 @@ class CatalogFurnitureItem(CatalogAtticItem.CatalogAtticItem):
                 avatar.b_setMaxClothes(self.getMaxClothes())
             if self.getFlags() & FLTrunk:
                 avatar.b_setMaxAccessories(self.getMaxAccessories())
-            house.addAtticItem(self)
+            # go through the manager, when the house is resident and its
+            # interior already up, so it re-broadcasts setAtticItems
+            # (required broadcast on DistributedFurnitureManager,
+            # etc/toon.dc:2090) -- house.addAtticItem only touches the
+            # house's own db-only field (etc/toon.dc:1212).
+            furnitureMgr = getattr(house, 'furnitureMgr', None)
+            if furnitureMgr is not None:
+                attic = house.getAtticItemList()
+                attic.append(self)
+                furnitureMgr.b_setAtticItems(attic.getBlob())
+            else:
+                house.addAtticItem(self)
             if self.getFlags() & FLBank:
                 avatar.b_setMaxBankMoney(self.getMaxBankMoney())
         return retcode
