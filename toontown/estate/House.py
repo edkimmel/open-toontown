@@ -10,6 +10,7 @@ from direct.task import Task
 from otp.distributed.TelemetryLimiter import RotationLimitToH, TLGatherAllAvs
 from toontown.toonbase import ToontownGlobals
 from toontown.toonbase import TTLocalizer
+from panda3d.otp import NametagGlobals
 
 class House(Place.Place):
     notify = DirectNotifyGlobal.directNotify.newCategory('House')

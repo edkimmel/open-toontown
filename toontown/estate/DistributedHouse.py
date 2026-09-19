@@ -19,6 +19,7 @@ from toontown.hood import Place
 from . import HouseGlobals
 from toontown.building import ToonInteriorColors
 from panda3d.otp import Nametag, NametagGroup
+from panda3d.toontown import DNADoor
 from direct.showbase.MessengerGlobal import messenger
 
 class DistributedHouse(DistributedObject.DistributedObject):
