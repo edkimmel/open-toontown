@@ -312,6 +312,29 @@ struct FriendDetail {
   uint32 petId;
 };
 
+// Owner-only snapshot used on Astron, whose client agent does not expose the
+// legacy CLIENT_GET_PET_DETAILS (81/82) datagrams. Values retain the existing
+// PetTrait (/10000), mood (/1000), and trick-aptitude (/10000) wire scales.
+struct OwnPetDetail {
+  uint32 ownerId;
+  string petName;
+  uint32 traitSeed;
+  uint32 safeZone;
+  uint16/10000(0-1) traitValues[];
+  int8(-1-1) head;
+  int8(-1-4) ears;
+  int8(-1-3) nose;
+  int8(-1-6) tail;
+  int8(0-6) bodyTexture;
+  int8(0-25) color;
+  int8(0-8) colorScale;
+  int8(0-5) eyeColor;
+  int8(0-1) gender;
+  uint32 lastSeenTimestamp;
+  uint16/1000(0-1) moodValues[];
+  uint16/10000(0-1) trickAptitudes[];
+};
+
 dclass FriendManager : DistributedObject {
   friendQuery(int32) airecv clsend;
   cancelFriendQuery(int32) airecv clsend;
@@ -328,6 +351,8 @@ dclass FriendManager : DistributedObject {
   submitSecretResponse(int8, int32);
   getFriendsListRequest() airecv clsend;
   getFriendsListResponse(uint8, FriendDetail []);
+  requestOwnPetDetails(uint32) airecv clsend;
+  ownPetDetailsResponse(uint32, uint8, uint32, OwnPetDetail);
 };
 
 struct FriendInfo {

@@ -1778,7 +1778,8 @@ class DistributedToon(DistributedPlayer.DistributedPlayer, Toon.Toon, Distribute
                 PetDetail.PetDetail(self.petId, self.__petDetailsLoaded)
 
         def __petDetailsLoaded(self, pet):
-            self.petDNA = pet.style
+            if pet is not None:
+                self.petDNA = pet.style
 
     def trickOrTreatTargetMet(self, beanAmount):
         if self.effect:

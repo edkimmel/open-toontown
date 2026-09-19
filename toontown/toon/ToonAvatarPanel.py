@@ -386,8 +386,18 @@ class ToonAvatarPanel(AvatarPanelBase.AvatarPanelBase):
         toonAvatar = self.avatar
         if base.cr.doId2do.get(toonAvatar.getDoId()):
             toonAvatar = base.cr.doId2do.get(toonAvatar.getDoId())
-        petAvatar = base.cr.doId2do.get(toonAvatar.getPetId())
+        petAvatar = (base.cr.doId2do.get(toonAvatar.getPetId()) or
+                     base.cr.friendsMap.get(toonAvatar.getPetId()))
         self.disableAll()
+        if __astron__:
+            # Owner-only PetDetails may not disclose a remote/offline pet.
+            # A live generated pet or an already-held local PetHandle remains
+            # usable without widening this into a public details API.
+            if petAvatar is None:
+                self.cleanup()
+                return
+            self.__petDetailsLoaded(petAvatar)
+            return
         from toontown.pets import PetDetail
         PetDetail.PetDetail(toonAvatar.getPetId(), self.__petDetailsLoaded)
 
