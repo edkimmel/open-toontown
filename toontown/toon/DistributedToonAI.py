@@ -163,6 +163,11 @@ class DistributedToonAI(DistributedPlayerAI.DistributedPlayerAI, DistributedSmoo
         self.hpOwnedByBattle = 0
         if simbase.wantPets:
             self.petTrickPhrases = []
+        # These are required Toon DB fields.  Initialise their DB defaults even
+        # when optional Bingo UI is disabled, because DBSS applies required
+        # setters before the object is placed in ``air.doId2do``.
+        self.bFishBingoTutorialDone = False
+        self.bFishBingoMarkTutorialDone = False
         if simbase.wantBingo:
             self.bingoCheat = False
         self.customMessages = []
@@ -3065,11 +3070,29 @@ class DistributedToonAI(DistributedPlayerAI.DistributedPlayerAI, DistributedSmoo
 
         def setFishBingoTutorialDone(self, bDone):
             self.notify.debug('setFishBingoTutorialDone')
+            if self.air.doId2do.get(self.doId) is not self:
+                # ENTER_AI applies required DB fields before placement.  This
+                # setter is used for that hydration as well as a client
+                # ownsend, so loading must not echo an already-persisted value.
+                self.bFishBingoTutorialDone = bool(bDone)
+                return
+            if self.bFishBingoTutorialDone:
+                return
             self.bFishBingoTutorialDone = True
+            # This ownsend handler must issue the db field itself; using b_set
+            # would re-enter this handler rather than persist the one-way
+            # acknowledgement.
+            self.sendUpdate('setFishBingoTutorialDone', [1])
 
         def setFishBingoMarkTutorialDone(self, bDone):
             self.notify.debug('setFishBingoMarkTutorialDone')
+            if self.air.doId2do.get(self.doId) is not self:
+                self.bFishBingoMarkTutorialDone = bool(bDone)
+                return
+            if self.bFishBingoMarkTutorialDone:
+                return
             self.bFishBingoMarkTutorialDone = True
+            self.sendUpdate('setFishBingoMarkTutorialDone', [1])
 
         def enterEstate(self, ownerId, zoneId):
             DistributedToonAI.notify.debug('enterEstate: %s %s %s' % (self.doId, ownerId, zoneId))

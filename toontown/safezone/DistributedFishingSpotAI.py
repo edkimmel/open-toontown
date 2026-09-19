@@ -41,6 +41,9 @@ class DistributedFishingSpotAI(DistributedObjectAI):
         self.__clearCastTimeout()
         self.ignoreAll()
         if self.pond is not None:
+            manager = self.pond.getBingoManager()
+            if manager is not None:
+                manager.dropPlayer(self.avId)
             self.pond.removeSpot(self)
             self.pond = None
         self.avId = 0
@@ -81,6 +84,9 @@ class DistributedFishingSpotAI(DistributedObjectAI):
         # client has an avatar to play it on (DistributedFishingSpot.py:253-255)
         self.d_setOccupied(avId)
         self.d_setMovie(FishGlobals.EnterMovie)
+        manager = self.pond and self.pond.getBingoManager()
+        if manager is not None:
+            manager.syncPlayer(avId)
 
     def requestExit(self):
         avId = self.air.getAvatarIdFromSender()
@@ -146,6 +152,11 @@ class DistributedFishingSpotAI(DistributedObjectAI):
             return
         code, itemDesc1, itemDesc2, itemDesc3 = self.air.fishManager.getCatch(
             av, self.pond.getArea(), self.rNumGen)
+        manager = self.pond.getBingoManager()
+        if manager is not None:
+            # The manager sees only this AI-ratified FishManager result, never
+            # the client-side reward movie or a client-provided fish tuple.
+            manager.ratifyCatch(avId, code, itemDesc1, itemDesc2)
         self.d_setMovie(FishGlobals.PullInMovie, code, itemDesc1, itemDesc2, itemDesc3)
 
     def sellFish(self):
@@ -193,6 +204,10 @@ class DistributedFishingSpotAI(DistributedObjectAI):
         avId = self.avId
         if avId:
             self.ignore(self.air.getAvatarExitEvent(avId))
+            if self.pond is not None:
+                manager = self.pond.getBingoManager()
+                if manager is not None:
+                    manager.dropPlayer(avId)
         self.d_setMovie(FishGlobals.ExitMovie)
         self.avId = 0
         self.d_setOccupied(0)

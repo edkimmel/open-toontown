@@ -28,6 +28,9 @@ class DistributedFishingPondAI(DistributedObjectAI):
         self.targets = {}
         # avId -> the time of their last ratified catch
         self.lastCatchTime = {}
+        # One ephemeral manager is attached by EstateWorld after this pond is
+        # generated.  The pond remains usable without it in non-estate zones.
+        self.bingoMgr = None
 
     def delete(self):
         # The pond arms no tasks of its own; its spots and targets cancel
@@ -35,6 +38,7 @@ class DistributedFishingPondAI(DistributedObjectAI):
         self.spots = {}
         self.targets = {}
         self.lastCatchTime = {}
+        self.bingoMgr = None
         DistributedObjectAI.delete(self)
 
     def setArea(self, area):
@@ -62,6 +66,12 @@ class DistributedFishingPondAI(DistributedObjectAI):
                 return spot
 
         return None
+
+    def setBingoManager(self, manager):
+        self.bingoMgr = manager
+
+    def getBingoManager(self):
+        return self.bingoMgr
 
     def addTarget(self, target):
         self.targets[target.doId] = target

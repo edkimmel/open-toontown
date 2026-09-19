@@ -18,12 +18,20 @@ def makeFishingPond(air, world):
     """Generate the estate fishing pond, its spots and its targets."""
     from toontown.ai.ToontownAIRepository import makeFishingTargets
     from toontown.fishing.DistributedFishingPondAI import DistributedFishingPondAI
+    from toontown.fishing.DistributedPondBingoManagerAI import DistributedPondBingoManagerAI
     from toontown.safezone.DistributedFishingSpotAI import DistributedFishingSpotAI
     from toontown.toonbase import ToontownGlobals
 
     pond = DistributedFishingPondAI(air)
     pond.setArea(ToontownGlobals.MyEstate)
     pond.generateWithRequired(world.zoneId)
+
+    # The manager's required pond reference must be set before generation so
+    # clients can bind the existing pond in their required-field callback.
+    bingoManager = DistributedPondBingoManagerAI(air)
+    bingoManager.setPondDoId(pond.doId)
+    bingoManager.generateWithRequired(world.zoneId)
+    bingoManager.beginGame()
 
     spots = []
     for x, y, z, h, p, r in FISHING_SPOT_POSES:
@@ -32,6 +40,7 @@ def makeFishingPond(air, world):
         spots.append(spot)
 
     world.fishingPond = pond
+    world.fishingBingoManager = bingoManager
     world.fishingSpots = spots
     world.fishingTargets = makeFishingTargets(air, pond)
     return pond
@@ -42,6 +51,12 @@ def teardownFishingPond(world):
     for spot in world.fishingSpots:
         spot.requestDelete()
     world.fishingSpots = []
+
+    # Cancel the manager's game/transition tasks and detach it while its pond
+    # still exists; no stale timeout may write into a later estate world.
+    if world.fishingBingoManager is not None:
+        world.fishingBingoManager.requestDelete()
+        world.fishingBingoManager = None
 
     for target in world.fishingTargets:
         target.requestDelete()
@@ -67,6 +82,7 @@ class EstateWorld:
         self.houses = []
         self.occupants = []
         self.fishingPond = None
+        self.fishingBingoManager = None
         self.fishingSpots = []
         self.fishingTargets = []
 
