@@ -21,8 +21,7 @@ class CatalogAtticItem(CatalogItem.CatalogItem):
         if not house:
             self.notify.warning('House %s (for avatar %s) not instantiated.' % (houseId, avatar.doId))
             return (None, ToontownGlobals.P_InvalidIndex)
-        numAtticItems = len(house.atticItems) + len(house.atticWallpaper) + len(house.atticWindows)
-        numHouseItems = numAtticItems + len(house.interiorItems)
+        numHouseItems = house.getNumHouseItems()
         if numHouseItems >= ToontownGlobals.MaxHouseItems and not self.replacesExisting():
             return (house, ToontownGlobals.P_NoRoomForItem)
         return (house, ToontownGlobals.P_ItemAvailable)
