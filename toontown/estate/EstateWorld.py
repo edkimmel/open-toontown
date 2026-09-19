@@ -148,6 +148,7 @@ class EstateWorldOperation:
             house.setHousePos(slot)
             house.createInterior()
             house.d_setHouseReady()
+            house.createCannon(world.estate)
             world.houses.append(house)
 
         self.__finish()

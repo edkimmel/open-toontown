@@ -1,14 +1,31 @@
 from toontown.toonbase import ToontownGlobals
 from direct.distributed.ClockDelta import *
-from direct.fsm import ClassicFSM
-from direct.fsm import State
 from direct.task import Task
 from toontown.minigame import CannonGameGlobals
 from direct.distributed import DistributedObjectAI
-from toontown.minigame import Trajectory
 from . import CannonGlobals
 
 class DistributedCannonAI(DistributedObjectAI.DistributedObjectAI):
+    """The estate pinball cannon (dclass DistributedCannon,
+    etc/toon.dc:993-1011): a single-occupant ride that fires the occupant at
+    a DistributedTargetAI, whose doId is this object's required `targetId`.
+
+    `setFired` (:1004) and `setCannonExit` (:1008) are declared but dead --
+    no client sends the first and no client handles the second -- so neither
+    has a handler here.
+
+    The reference only released the session on `setLanded` and never sent a
+    following CANNON_MOVIE_CLEAR, so the `broadcast ram` movie field kept
+    replaying the terminal mode to anyone entering the zone afterwards, and
+    a forced exit left `avId` set so the cannon could never be entered
+    again; __release clears both the way DistributedClosetAI.__release does
+    (DistributedClosetAI.py:234-251).  The reference also acted on
+    `setCannonPosition`/`setCannonLit`/`setLanded` from any client in the
+    zone, and trusted the sender's aim and bumper position; both are checked
+    here against the occupant and against the ranges the client already
+    clamps itself to (DistributedCannon.py:33-37).
+    """
+
     notify = directNotify.newCategory('DistributedCannonAI')
 
     def __init__(self, air, estateId, targetId, x, y, z, h, p, r):
@@ -20,6 +37,7 @@ class DistributedCannonAI(DistributedObjectAI.DistributedObjectAI):
          p,
          r]
         self.avId = 0
+        self.active = 1
         self.estateId = estateId
         self.timeoutTask = None
         self.targetId = targetId
@@ -54,8 +72,11 @@ class DistributedCannonAI(DistributedObjectAI.DistributedObjectAI):
         return self.cannonBumperPos
 
     def requestBumperMove(self, x, y, z):
-        self.cannonBumperPos = [x, y, z]
-        self.sendUpdate('setCannonBumperPos', [x, y, z])
+        avId = self.air.getAvatarIdFromSender()
+        pos = [self.__clampBumper(value, initial, avId)
+               for value, initial in zip((x, y, z), ToontownGlobals.PinballCannonBumperInitialPos)]
+        self.cannonBumperPos = pos
+        self.sendUpdate('setCannonBumperPos', pos)
 
     def getPosHpr(self):
         return self.posHpr
@@ -68,13 +89,19 @@ class DistributedCannonAI(DistributedObjectAI.DistributedObjectAI):
 
     def setCannonPosition(self, zRot, angle):
         avId = self.air.getAvatarIdFromSender()
+        if not self.__isOccupant(avId, 'setCannonPosition'):
+            return
         self.notify.debug('setCannonPosition: ' + str(avId) + ': zRot=' + str(zRot) + ', angle=' + str(angle))
+        zRot, angle = self.__clampAim(zRot, angle, avId)
         self.sendUpdate('updateCannonPosition', [avId, zRot, angle])
 
     def setCannonLit(self, zRot, angle):
         avId = self.air.getAvatarIdFromSender()
+        if not self.__isOccupant(avId, 'setCannonLit'):
+            return
         self.__stopTimeout()
         self.notify.debug('setCannonLit: ' + str(avId) + ': zRot=' + str(zRot) + ', angle=' + str(angle))
+        zRot, angle = self.__clampAim(zRot, angle, avId)
         fireTime = CannonGameGlobals.FUSE_TIME
         self.sendUpdate('setCannonWillFire', [avId,
          fireTime,
@@ -83,9 +110,10 @@ class DistributedCannonAI(DistributedObjectAI.DistributedObjectAI):
          globalClockDelta.getRealNetworkTime()])
 
     def setLanded(self):
-        self.ignore(self.air.getAvatarExitEvent(self.avId))
-        self.setMovie(CannonGlobals.CANNON_MOVIE_LANDED, 0)
-        self.avId = 0
+        avId = self.air.getAvatarIdFromSender()
+        if not self.__isOccupant(avId, 'setLanded'):
+            return
+        self.__release(CannonGlobals.CANNON_MOVIE_LANDED, 0)
 
     def setActive(self, active):
         if active < 0 or active > 1:
@@ -93,6 +121,29 @@ class DistributedCannonAI(DistributedObjectAI.DistributedObjectAI):
             return
         self.active = active
         self.sendUpdate('setActiveState', [active])
+
+    def __isOccupant(self, avId, methodName):
+        if avId != 0 and avId == self.avId:
+            return True
+        self.air.writeServerEvent('suspicious', avId,
+                                  'DistributedCannonAI.%s from a non-occupant' % methodName)
+        return False
+
+    def __clampAim(self, zRot, angle, avId):
+        clamped = (min(max(zRot, CannonGlobals.CANNON_ROTATION_MIN), CannonGlobals.CANNON_ROTATION_MAX),
+                   min(max(angle, CannonGlobals.CANNON_ANGLE_MIN), CannonGlobals.CANNON_ANGLE_MAX))
+        if clamped != (zRot, angle):
+            self.air.writeServerEvent('suspicious', avId,
+                                      'DistributedCannonAI aim out of range')
+        return clamped
+
+    def __clampBumper(self, value, initial, avId):
+        limit = CannonGlobals.CANNON_BUMPER_MOVE_LIMIT
+        clamped = min(max(value, initial - limit), initial + limit)
+        if clamped != value:
+            self.air.writeServerEvent('suspicious', avId,
+                                      'DistributedCannonAI.requestBumperMove out of range')
+        return clamped
 
     def __startTimeout(self, timeLimit):
         self.__stopTimeout()
@@ -118,4 +169,13 @@ class DistributedCannonAI(DistributedObjectAI.DistributedObjectAI):
         self.__doExit()
 
     def __doExit(self):
-        self.setMovie(CannonGlobals.CANNON_MOVIE_FORCE_EXIT, self.avId)
+        self.__release(CannonGlobals.CANNON_MOVIE_FORCE_EXIT, self.avId)
+
+    def __release(self, mode, movieAvId):
+        avId = self.avId
+        self.__stopTimeout()
+        if avId:
+            self.ignore(self.air.getAvatarExitEvent(avId))
+            self.ignore('bootAvFromEstate-' + str(avId))
+        self.setMovie(mode, movieAvId)
+        self.setMovie(CannonGlobals.CANNON_MOVIE_CLEAR, 0)

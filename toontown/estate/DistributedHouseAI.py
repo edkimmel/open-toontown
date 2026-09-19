@@ -1,7 +1,12 @@
+import math
+
 from direct.directnotify import DirectNotifyGlobal
 from direct.distributed.DistributedObjectAI import DistributedObjectAI
 
 from toontown.building import DoorTypes
+from toontown.estate import CannonGlobals
+from toontown.estate.DistributedCannonAI import DistributedCannonAI
+from toontown.estate.DistributedTargetAI import DistributedTargetAI
 from toontown.estate.DistributedHouseDoorAI import DistributedHouseDoorAI
 from toontown.estate.DistributedHouseInteriorAI import DistributedHouseInteriorAI
 from toontown.estate.EstateProvisioner import fieldValue
@@ -28,6 +33,8 @@ class DistributedHouseAI(DistributedObjectAI):
         self.cannonEnabled = 0
         self.interiorZoneId = None
         self.interior = None
+        self.cannon = None
+        self.target = None
         self.door = None
         self.insideDoor = None
 
@@ -155,11 +162,44 @@ class DistributedHouseAI(DistributedObjectAI):
         self.door = door
         self.insideDoor = insideDoor
 
+    def createCannon(self, estateAI):
+        """Generate this house's pinball cannon and the target it shoots at,
+        if the house has one (`cannonEnabled`, etc/toon.dc:1219).  Both go in
+        the estate's outdoor zone.  The
+        target has to exist first: its doId is the cannon's required
+        `targetId` field (etc/toon.dc:995).
+
+        `CannonGlobals.cannonDrops` holds six placements and the reference
+        never reads the table, so there is no placement policy to port; one
+        drop per house slot keeps the six houses' cannons apart.  The target
+        is parked CannonGlobals.TARGET_DISTANCE in front of the drop point,
+        along its heading, CannonGlobals.TARGET_HEIGHT up, so every cannon
+        starts out pointing at its own target.  Idempotent."""
+        if not self.cannonEnabled or self.cannon is not None:
+            return
+
+        x, y, z, h, p, r = CannonGlobals.cannonDrops[self.housePos % len(CannonGlobals.cannonDrops)]
+        heading = math.radians(h)
+        self.target = DistributedTargetAI(self.air,
+                                          x - math.sin(heading) * CannonGlobals.TARGET_DISTANCE,
+                                          y + math.cos(heading) * CannonGlobals.TARGET_DISTANCE,
+                                          z + CannonGlobals.TARGET_HEIGHT)
+        self.target.generateWithRequired(self.zoneId)
+        self.cannon = DistributedCannonAI(self.air, estateAI.doId, self.target.doId,
+                                          x, y, z, h, p, r)
+        self.cannon.generateWithRequired(self.zoneId)
+        # the client keeps the target stashed until the state says enabled
+        # (DistributedTarget.py:95-104)
+        self.target.d_setState(1, 0, 0)
+
     def destroy(self):
-        for distObj in (self.insideDoor, self.door, self.interior):
+        for distObj in (self.cannon, self.target, self.insideDoor,
+                        self.door, self.interior):
             if distObj is not None:
                 distObj.requestDelete()
 
+        self.cannon = None
+        self.target = None
         self.insideDoor = None
         self.door = None
         self.interior = None
