@@ -2,6 +2,55 @@ from direct.directnotify import DirectNotifyGlobal
 
 from toontown.estate.EstateProvisioner import NUM_HOUSE_SLOTS
 
+# The estate's four fishing_spot props, (x, y, z, h, p, r), lifted from
+# resources/phase_5.5/dna/estate_1.dna:6-25 -- the "fishing_pond_1" group's
+# four "fishing_spot_DNARoot" props, in file order. The AI never parses the
+# estate's DNA, so these are module constants.
+FISHING_SPOT_POSES = (
+    (49.1029, -124.805, 0.344704, 90, 0, 0),
+    (46.5222, -134.739, 0.390713, 75, 0, 0),
+    (41.31, -144.559, 0.375978, 45, 0, 0),
+    (46.8254, -113.682, 0.46015, 135, 0, 0),
+)
+
+
+def makeFishingPond(air, world):
+    """Generate the estate fishing pond, its spots and its targets."""
+    from toontown.ai.ToontownAIRepository import makeFishingTargets
+    from toontown.fishing.DistributedFishingPondAI import DistributedFishingPondAI
+    from toontown.safezone.DistributedFishingSpotAI import DistributedFishingSpotAI
+    from toontown.toonbase import ToontownGlobals
+
+    pond = DistributedFishingPondAI(air)
+    pond.setArea(ToontownGlobals.MyEstate)
+    pond.generateWithRequired(world.zoneId)
+
+    spots = []
+    for x, y, z, h, p, r in FISHING_SPOT_POSES:
+        spot = DistributedFishingSpotAI(air, pond.doId, x, y, z, h, p, r)
+        spot.generateWithRequired(world.zoneId)
+        spots.append(spot)
+
+    world.fishingPond = pond
+    world.fishingSpots = spots
+    world.fishingTargets = makeFishingTargets(air, pond)
+    return pond
+
+
+def teardownFishingPond(world):
+    """Remove the estate fishing spots and targets before their pond."""
+    for spot in world.fishingSpots:
+        spot.requestDelete()
+    world.fishingSpots = []
+
+    for target in world.fishingTargets:
+        target.requestDelete()
+    world.fishingTargets = []
+
+    if world.fishingPond is not None:
+        world.fishingPond.requestDelete()
+        world.fishingPond = None
+
 
 class EstateWorld:
     """One account's estate while it is live: the zone it was generated in,
@@ -17,6 +66,9 @@ class EstateWorld:
         self.estate = None
         self.houses = []
         self.occupants = []
+        self.fishingPond = None
+        self.fishingSpots = []
+        self.fishingTargets = []
 
     def addOccupant(self, avId):
         if avId not in self.occupants:
@@ -39,6 +91,8 @@ class EstateWorld:
             house.destroy()
 
         self.houses = []
+        teardownFishingPond(self)
+
         if self.estate is not None:
             self.estate.requestDelete()
             self.estate = None
@@ -149,6 +203,9 @@ class EstateWorldOperation:
             house.createInterior()
             house.d_setHouseReady()
             world.houses.append(house)
+
+        if world.fishingPond is None:
+            makeFishingPond(self.air, world)
 
         self.__finish()
 
