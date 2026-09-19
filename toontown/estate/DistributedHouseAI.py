@@ -192,9 +192,25 @@ class DistributedHouseAI(DistributedObjectAI):
         return CatalogItemList.CatalogItemList(
             self.atticWallpaper, store=CatalogItem.Customization)
 
+    def addWallpaper(self, item):
+        """CatalogSurfaceItem.recordPurchase calls this to deliver a
+        purchased wallpaper/flooring/moulding/wainscoting item into the
+        attic (toontown/catalog/CatalogSurfaceItem.py:30)."""
+        items = self.getAtticWallpaperList()
+        items.append(item)
+        self.b_setAtticWallpaper(items.getBlob())
+
     def getAtticWindowList(self):
         return CatalogItemList.CatalogItemList(
             self.atticWindows, store=CatalogItem.Customization)
+
+    def addWindow(self, item):
+        """CatalogWindowItem.recordPurchase calls this to deliver a
+        purchased window into the attic
+        (toontown/catalog/CatalogWindowItem.py:43)."""
+        items = self.getAtticWindowList()
+        items.append(item)
+        self.b_setAtticWindows(items.getBlob())
 
     def getDeletedItemList(self):
         return CatalogItemList.CatalogItemList(
