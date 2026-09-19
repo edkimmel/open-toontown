@@ -2,6 +2,28 @@ from direct.directnotify import DirectNotifyGlobal
 
 from toontown.estate.EstateProvisioner import NUM_HOUSE_SLOTS
 
+# The flower-sell wheelbarrow's own position (DistributedEstate.py:399), the
+# anchor the fireworks cannon is offset from.  No reference placement exists
+# for this prop -- the offset itself is invented, just far enough from the
+# wheelbarrow that the two props' collision spheres do not overlap.
+WHEELBARROW_POS = (-142.586, 4.353, 0.025)
+FIREWORKS_CANNON_OFFSET = (10.0, 0.0, 0.0)
+
+
+def makeFireworksCannon(air, world):
+    """Generate the estate's one fireworks cannon into its zone, at a fixed
+    offset from the flower-sell wheelbarrow.  Permanent and always
+    generated (no rental gate, unlike the pinball cannon) by
+    EstateWorldOperation.__populate."""
+    from toontown.estate.DistributedFireworksCannonAI import DistributedFireworksCannonAI
+
+    x = WHEELBARROW_POS[0] + FIREWORKS_CANNON_OFFSET[0]
+    y = WHEELBARROW_POS[1] + FIREWORKS_CANNON_OFFSET[1]
+    z = WHEELBARROW_POS[2] + FIREWORKS_CANNON_OFFSET[2]
+    cannon = DistributedFireworksCannonAI(air, getattr(air, 'fireworkMgr', None), x, y, z)
+    cannon.generateWithRequired(world.zoneId)
+    return cannon
+
 
 class EstateWorld:
     """One account's estate while it is live: the zone it was generated in,
@@ -17,6 +39,7 @@ class EstateWorld:
         self.estate = None
         self.houses = []
         self.occupants = []
+        self.fireworksCannon = None
 
     def addOccupant(self, avId):
         if avId not in self.occupants:
@@ -39,6 +62,10 @@ class EstateWorld:
             house.destroy()
 
         self.houses = []
+        if self.fireworksCannon is not None:
+            self.fireworksCannon.requestDelete()
+            self.fireworksCannon = None
+
         if self.estate is not None:
             self.estate.requestDelete()
             self.estate = None
@@ -161,6 +188,12 @@ class EstateWorldOperation:
                 house.setCannonEnabled(1)
             house.createCannon(world.estate)
             world.houses.append(house)
+
+        # The fireworks cannon is a permanent, always-generated estate prop
+        # (unlike the rental-gated pinball cannon above) -- one per estate,
+        # regardless of how many house slots are occupied.
+        if world.fireworksCannon is None:
+            world.fireworksCannon = makeFireworksCannon(self.air, world)
 
         self.__finish()
 
