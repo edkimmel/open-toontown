@@ -793,6 +793,14 @@ class LoadAvatarOperation(AvatarOperation):
 
         self.loginManager.air.setOwner(self.avId, channel)
 
+        # Tell the friends UD this avatar is online.  This is the only place
+        # an avatar becomes "online" in the reference, and both objects live
+        # in the same UD process, so it is a direct call.  Guarded so a UD
+        # built without the friends managers still logs in.
+        avatarFriendsManager = getattr(self.loginManager.air, 'avatarFriendsManager', None)
+        if avatarFriendsManager is not None:
+            avatarFriendsManager.avatarCameOnline(self.avId, channel)
+
         self._handleDone()
 
 
@@ -808,6 +816,11 @@ class UnloadAvatarOperation(GameOperation):
 
     def __handleUnloadAvatar(self):
         channel = self.loginManager.GetAccountConnectionChannel(self.sender)
+
+        # Mirror of LoadAvatarOperation.__handleSetAvatar's presence hook.
+        avatarFriendsManager = getattr(self.loginManager.air, 'avatarFriendsManager', None)
+        if avatarFriendsManager is not None:
+            avatarFriendsManager.avatarWentOffline(self.avId)
 
         datagram = PyDatagram()
         datagram.addServerHeader(channel, self.loginManager.air.ourChannel, CLIENTAGENT_CLEAR_POST_REMOVES)

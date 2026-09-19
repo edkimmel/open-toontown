@@ -305,6 +305,13 @@ dclass DistributedChatManager : DistributedObject {
   whisperIgnored(uint32);
 };
 
+struct FriendDetail {
+  uint32 avatarId;
+  string avatarName;
+  blob dnaString;
+  uint32 petId;
+};
+
 dclass FriendManager : DistributedObject {
   friendQuery(int32) airecv clsend;
   cancelFriendQuery(int32) airecv clsend;
@@ -319,6 +326,8 @@ dclass FriendManager : DistributedObject {
   requestSecretResponse(int8, string);
   submitSecret(string(0-256)) airecv clsend;
   submitSecretResponse(int8, int32);
+  getFriendsListRequest() airecv clsend;
+  getFriendsListResponse(uint8, FriendDetail []);
 };
 
 struct FriendInfo {

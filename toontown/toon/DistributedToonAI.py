@@ -602,12 +602,14 @@ class DistributedToonAI(DistributedPlayerAI.DistributedPlayerAI, DistributedSmoo
         return None
 
     def setFriendsList(self, friendsList):
-        self.notify.debug('setting friends list to %s' % self.friendsList)
+        self.notify.debug('setting friends list to %s' % friendsList)
         self.friendsList = friendsList
         if friendsList:
-            friendId = friendsList[-1]
+            # Entries are (friendId, friendCode) pairs, not bare ids.
+            friendId = friendsList[-1][0]
             otherAv = self.air.doId2do.get(friendId)
-            self.air.questManager.toonMadeFriend(self, otherAv)
+            if otherAv is not None:
+                self.air.questManager.toonMadeFriend(self, otherAv)
 
     def getFriendsList(self):
         return self.friendsList
