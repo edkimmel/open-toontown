@@ -1,4 +1,5 @@
 from . import CatalogItem
+from direct.showbase.PythonUtil import Functor
 import time
 from toontown.toonbase import ToontownGlobals
 from toontown.toonbase import TTLocalizer
