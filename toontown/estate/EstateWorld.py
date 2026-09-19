@@ -6,8 +6,8 @@ from toontown.estate.EstateProvisioner import NUM_HOUSE_SLOTS
 # DistributedPetAI.generate drops a freshly activated pet at a random point
 # in a +/-20 box around the zone origin with no ground check (:512-514),
 # which in the estate is the pond, a house, or off the terrain.  This is the
-# flower-sell wheelbarrow's own patch of lawn
-# DistributedEstate.py:399) with the same ground z, 12 units along +y so the
+# flower-sell wheelbarrow's own patch of lawn (DistributedEstate.py:399)
+# with the same ground z, 12 units along +y so the
 # pet stands clear of the wheelbarrow and of the fireworks cannon 10 units
 # along +x; it is ~224 units from the fishing pond's circle
 # (FishingTargetGlobals centre (30, -126, -0.3), radius 16).
@@ -100,7 +100,6 @@ class EstatePetActivation:
     def __finish(self):
         if self.callback is not None:
             self.callback()
-
 
 
 class EstateWorld:
