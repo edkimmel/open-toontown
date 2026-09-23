@@ -1619,6 +1619,64 @@ class BossBattle(MagicWord):
         boss.requestDelete()
         self.air.deallocateZone(bossZone)
 
+class SpawnCog(MagicWord):
+    desc = "Spawn a specific street cog at your location."
+    advancedDesc = "Creates a real street cog through the local zone's DistributedSuitPlannerAI, placed on " \
+                   "the suit path point nearest you, so it's the same kind of cog you'd battle by walking " \
+                   "into it. Only works on a street zone that has a suit planner."
+    execLocation = MagicWordConfig.EXEC_LOC_SERVER
+    arguments = [("cogName", str, True), ("level", int, False, -1), ("flag", str, False, "")]
+
+    def handleWord(self, invoker, avId, toon, *args):
+        from toontown.suit import SuitDNA
+        from toontown.battle import SuitBattleGlobals
+
+        cogNameArg = args[0]
+        level = args[1]
+        flag = args[2].lower()
+
+        suitName = None
+        if cogNameArg in SuitDNA.suitHeadTypes:
+            suitName = cogNameArg
+        else:
+            lowered = cogNameArg.lower()
+            for code in SuitDNA.suitHeadTypes:
+                attrs = SuitBattleGlobals.SuitAttributes[code]
+                if lowered in (attrs['name'].lower(), attrs.get('singularname', '').lower()):
+                    suitName = code
+                    break
+
+        if suitName is None:
+            return "Unknown cog name/code: \"%s\"." % cogNameArg
+
+        attrs = SuitBattleGlobals.SuitAttributes[suitName]
+        minLevel = attrs['level'] + 1
+        maxLevel = attrs['level'] + len(attrs['hp'])
+        if level == -1:
+            level = None
+        elif not minLevel <= level <= maxLevel:
+            return "Level for %s must be between %d and %d (got %d)." % (attrs['name'], minLevel, maxLevel, level)
+
+        if flag not in ("", "skelecog", "revive"):
+            return "Unknown flag \"%s\". Use \"skelecog\" or \"revive\"." % flag
+
+        planner = self.air.suitPlanners.get(toon.zoneId)
+        if planner is None:
+            return "There's no suit planner in this zone -- go to a street to spawn a cog."
+
+        if not planner.streetPointList:
+            return "This street has no suit path points."
+
+        toonPos = toon.getPos()
+        nearestPoint = min(planner.streetPointList, key=lambda p: (p.getPos() - toonPos).lengthSquared())
+
+        newSuit = planner.createNewSuit([], [nearestPoint], suitLevel=level, suitName=suitName,
+                                         skelecog=(flag == "skelecog"), revives=(1 if flag == "revive" else None))
+        if newSuit is None:
+            return "Failed to spawn %s -- no free path point near you." % attrs['name']
+
+        return "Spawned a level %d %s near you." % (newSuit.getActualLevel(), attrs['name'])
+
 class GlobalTeleport(MagicWord):
     aliases = ["globaltp", "tpaccess"]
     desc = "Enables teleport access to all zones."
