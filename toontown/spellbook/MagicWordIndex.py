@@ -749,7 +749,8 @@ class Disguise(MagicWord):
     desc = "Gives the target a complete cog disguise for one department and unlocks the disguise page."
     execLocation = MagicWordConfig.EXEC_LOC_SERVER
     accessLevel = 'ADMIN'
-    arguments = [("dept", str, False, 'sell'), ("level", int, False, 1)]
+    arguments = [("dept", str, False, 'sell'), ("level", int, False, 1),
+                 ("suitType", int, False, 0)]
 
     # SuitDNA.suitDepts order: c, l, m, s
     deptNames = {'c': ('c', 'boss', 'bossbot'),
@@ -760,9 +761,11 @@ class Disguise(MagicWord):
     def handleWord(self, invoker, avId, toon, *args):
         from toontown.suit import SuitDNA
         from toontown.coghq import CogDisguiseGlobals
+        from toontown.battle import SuitBattleGlobals
 
         deptName = args[0].lower()
         level = args[1]
+        suitType = args[2]
         dept = None
         for deptChar, names in self.deptNames.items():
             if deptName in names:
@@ -773,22 +776,27 @@ class Disguise(MagicWord):
         if not 1 <= level <= 5:
             return "Specify a suit level between 1 and 5."
 
+        if not 0 <= suitType < SuitDNA.suitsPerDept:
+            return "Specify a suit type between 0 and {}.".format(SuitDNA.suitsPerDept - 1)
+
         deptIndex = SuitDNA.suitDepts.index(dept)
         parts = list(toon.getCogParts())
         parts[deptIndex] = CogDisguiseGlobals.PartsPerSuitBitmasks[deptIndex]
         toon.b_setCogParts(parts)
         types = list(toon.getCogTypes())
-        types[deptIndex] = 0
+        types[deptIndex] = suitType
         toon.b_setCogTypes(types)
-        # cogLevels holds the absolute level; the first cog type of every department is level 0 (type level 1).
+        # cogLevels holds the absolute level; level is this magic word's
+        # familiar 1..5 relative level inside the selected suit type.
         levels = list(toon.getCogLevels())
-        levels[deptIndex] = level - 1
+        cogTypeStr = SuitDNA.suitHeadTypes[SuitDNA.suitsPerDept * deptIndex + suitType]
+        levels[deptIndex] = SuitBattleGlobals.SuitAttributes[cogTypeStr]['level'] + level - 1
         toon.b_setCogLevels(levels)
         merits = list(toon.getCogMerits())
         merits[deptIndex] = CogDisguiseGlobals.getTotalMerits(toon, deptIndex) // 2
         toon.b_setCogMerits(merits)
         toon.b_setDisguisePageFlag(1)
-        return f"Gave {toon.getName()} a level {level} {SuitDNA.suitDeptFullnames[dept]} disguise."
+        return f"Gave {toon.getName()} a level {level} type {suitType} {SuitDNA.suitDeptFullnames[dept]} disguise."
 
 class Sos(MagicWord):
     aliases = ["soscards"]
