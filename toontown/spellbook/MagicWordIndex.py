@@ -350,6 +350,56 @@ class GagExp(MagicWord):
         toon.d_setExperience(toon.experience.makeNetString())
         return f"Set {ToontownBattleGlobals.Tracks[track]} experience to {value} for {toon.getName()}."
 
+class SetMerit(MagicWord):
+    """Dev-only Cog-disguise merit adjustment; only affects the invoking Toon."""
+    aliases = ["merit", "cogmerit"]
+    desc = "Sets one of your Cog-disguise merit counters to an exact value."
+    administrative = True
+    accessLevel = 'ADMIN'
+    affectRange = [MagicWordConfig.AFFECT_SELF]
+    execLocation = MagicWordConfig.EXEC_LOC_SERVER
+    arguments = [("department", str, True), ("value", int, True)]
+
+    # SuitDNA.suitDepts order: c, l, m, s
+    departmentNames = {'c': ('c', 'boss', 'bossbot'),
+                        'l': ('l', 'law', 'lawbot'),
+                        'm': ('m', 'cash', 'cashbot'),
+                        's': ('s', 'sell', 'sellbot')}
+
+    def _departmentIndex(self, department):
+        from toontown.suit import SuitDNA
+
+        key = department.lower()
+        for deptChar, names in self.departmentNames.items():
+            if key in names:
+                return SuitDNA.suitDepts.index(deptChar)
+        return None
+
+    def handleWord(self, invoker, avId, toon, *args):
+        from toontown.coghq import CogDisguiseGlobals
+
+        # The spellbook enforces self-only targeting, and using invoker here
+        # retains that safety if this method is ever called directly.
+        if invoker is not None and toon is not invoker:
+            return "This command can only set the invoking Toon's merits."
+
+        department, value = args[0], args[1]
+        if isinstance(value, bool) or not isinstance(value, int):
+            return "Merit value must be an integer."
+        deptIndex = self._departmentIndex(department)
+        if deptIndex is None:
+            return "Unknown department \"{}\". Valid departments: boss, law, cash, sell.".format(department)
+
+        maximum = CogDisguiseGlobals.getTotalMerits(toon, deptIndex)
+        if not 0 <= value <= maximum:
+            return "Specify a value between 0 and {} for {}'s current disguise.".format(maximum, toon.getName())
+
+        merits = list(toon.getCogMerits())
+        merits[deptIndex] = value
+        toon.b_setCogMerits(merits)
+        return "Set {}'s {} merits to {} (current maximum {}).".format(
+            toon.getName(), department, value, maximum)
+
 class GameAccess(MagicWord):
     # Session-only: setAccess is `required ram`, not `db`, so this does not
     # persist across a reconnect. The class name lowercases to the "gameaccess"
