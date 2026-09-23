@@ -1718,7 +1718,9 @@ class SpawnCog(MagicWord):
         if flag not in ("", "skelecog", "revive"):
             return "Unknown flag \"%s\". Use \"skelecog\" or \"revive\"." % flag
 
-        planner = self.air.suitPlanners.get(toon.zoneId)
+        from toontown.hood import ZoneUtil
+        streetId = ZoneUtil.getBranchZone(toon.zoneId)
+        planner = self.air.suitPlanners.get(streetId)
         if planner is None:
             return "There's no suit planner in this zone -- go to a street to spawn a cog."
 
