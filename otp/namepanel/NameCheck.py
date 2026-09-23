@@ -80,7 +80,7 @@ def checkName(name, otherCheckFuncs = [], font = None):
                     return OTPLocalizer.NCNoDigits
                 else:
                     notify.info('name contains bad char: %s' % TextEncoder().encodeWtext(char))
-                    return OTPLocalizer.NCBadCharacter % TextEncoder().encodeWtext(char)
+                    return OTPLocalizer.NCBadCharacter % char
 
     def fontHasCharacters(name, font = font):
         if font:
@@ -89,7 +89,7 @@ def checkName(name, otherCheckFuncs = [], font = None):
             for c in name:
                 if not tn.hasCharacter(str(c)):
                     notify.info('name contains bad char: %s' % TextEncoder().encodeWtext(c))
-                    return OTPLocalizer.NCBadCharacter % TextEncoder().encodeWtext(c)
+                    return OTPLocalizer.NCBadCharacter % c
 
     def hasLetters(name):
         words = wordList(name)
@@ -260,7 +260,7 @@ def checkName(name, otherCheckFuncs = [], font = None):
                     return OTPLocalizer.NCNoDigits
                 else:
                     notify.info('name contains not allowed utf8 char: 0x%04x' % char)
-                    return OTPLocalizer.NCBadCharacter % te.encodeWtext(chr(char))
+                    return OTPLocalizer.NCBadCharacter % chr(char)
             elif char in halfwidthCharacter:
                 dc += 0.5
             else:
@@ -287,7 +287,7 @@ def checkName(name, otherCheckFuncs = [], font = None):
             lastChar = char
             if count > 2:
                 notify.info('character %s is repeated too many times' % TextEncoder().encodeWtext(char))
-                return OTPLocalizer.NCRepeatedChar % TextEncoder().encodeWtext(char)
+                return OTPLocalizer.NCRepeatedChar % char
 
         return
 
