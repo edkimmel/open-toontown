@@ -295,6 +295,8 @@ class Inventory(MagicWord):
         restockInvWords = ['restock', 'max', 'all', '', 'fill']
         # the list of words that can be used to empty the inventory
         emptyInvWords = ['empty', 'zero', 'null', 'clear', 'none', 'reset']
+        # the list of words that can be used to empty the inventory including uber gags
+        wipeInvWords = ['wipe', 'emptyall']
         if command in restockInvWords:
             toon.inventory.maxOutInv()
             toon.d_setInventory(toon.inventory.makeNetString())
@@ -303,6 +305,10 @@ class Inventory(MagicWord):
             toon.inventory.zeroInv()
             toon.d_setInventory(toon.inventory.makeNetString())
             return ("Zeroing inventory for " + toon.getName() + ".")
+        if command in wipeInvWords:
+            toon.inventory.zeroInv(killUber=1)
+            toon.d_setInventory(toon.inventory.makeNetString())
+            return ("Zeroing inventory (including uber gags) for " + toon.getName() + ".")
 
 class GagExp(MagicWord):
     # Sets exact experience on one gag track, rather than adding to it.
