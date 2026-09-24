@@ -461,6 +461,43 @@ class SetMoney(MagicWord):
         toon.b_setMoney(money)
         return "{}'s jellybeans have been set to {}.".format(toon.getName(), money)
 
+class SetMaxMoney(MagicWord):
+    aliases = ["maxmoney"]
+    desc = "Sets the size of the target's jellybean pocket."
+    execLocation = MagicWordConfig.EXEC_LOC_SERVER
+    arguments = [("maxMoney", int, True)]
+
+    def handleWord(self, invoker, avId, toon, *args):
+        maxMoney = args[0]
+
+        if not 0 <= maxMoney <= 250:
+            return "Can't set {}'s pocket size to {}! Specify a value between 0 and 250.".format(
+                toon.getName(), maxMoney)
+
+        if toon.getMoney() > maxMoney:
+            toon.b_setMoney(maxMoney)
+
+        toon.b_setMaxMoney(maxMoney)
+        return "{}'s pocket size has been set to {}.".format(toon.getName(), maxMoney)
+
+class SetQuestCarryLimit(MagicWord):
+    aliases = ["questlimit"]
+    desc = "Sets the number of ToonTasks the target can carry at once."
+    execLocation = MagicWordConfig.EXEC_LOC_SERVER
+    arguments = [("limit", int, True)]
+
+    def handleWord(self, invoker, avId, toon, *args):
+        from toontown.toonbase import ToontownGlobals
+
+        limit = args[0]
+
+        if not 1 <= limit <= ToontownGlobals.MaxQuestCarryLimit:
+            return "Can't set {}'s ToonTask limit to {}! Specify a value between 1 and {}.".format(
+                toon.getName(), limit, ToontownGlobals.MaxQuestCarryLimit)
+
+        toon.b_setQuestCarryLimit(limit)
+        return "{}'s ToonTask limit has been set to {}.".format(toon.getName(), limit)
+
 class SetBankMoney(MagicWord):
     aliases = ["bank", "bankmoney"]
     desc = "Sets the amount of jellybeans in the target's bank."
