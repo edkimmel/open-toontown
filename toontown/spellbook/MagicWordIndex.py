@@ -841,6 +841,80 @@ class Disguise(MagicWord):
         toon.b_setDisguisePageFlag(1)
         return f"Gave {toon.getName()} a level {level} type {suitType} {SuitDNA.suitDeptFullnames[dept]} disguise."
 
+class CogGallery(MagicWord):
+    """Dev-only Cog-gallery seed; only affects the invoking Toon.
+
+    A fresh Toon's cogs/cogCounts db fields default to an empty list
+    (DistributedToonAI.py:90-91), not the 32-entry DC default
+    (etc/toon.dc:518-521). SuitPage.updatePage (SuitPage.py:481-489)
+    skips resetPanel for every panel when that list is empty, so the
+    panels never get a quotaLabel; toggling the radar afterwards then
+    crashes at SuitPage.py:538 (panel.quotaLabel.hide()) because the
+    label was never created. Seeding full-length arrays fixes it.
+    """
+    aliases = ["cogstatus"]
+    desc = "Seeds Cog-gallery status/count/radar data for one department or all."
+    administrative = True
+    accessLevel = 'ADMIN'
+    affectRange = [MagicWordConfig.AFFECT_SELF]
+    execLocation = MagicWordConfig.EXEC_LOC_SERVER
+    arguments = [("department", str, False, 'all'), ("status", int, False, 2)]
+
+    # SuitDNA.suitDepts order: c, l, m, s
+    departmentNames = {'c': ('c', 'boss', 'bossbot'),
+                        'l': ('l', 'law', 'lawbot'),
+                        'm': ('m', 'cash', 'cashbot'),
+                        's': ('s', 'sell', 'sellbot')}
+
+    def handleWord(self, invoker, avId, toon, *args):
+        from toontown.suit import SuitDNA
+        from toontown.shtiker import CogPageGlobals
+
+        department = args[0].lower()
+        status = args[1]
+        if not CogPageGlobals.COG_UNSEEN <= status <= CogPageGlobals.COG_COMPLETE2:
+            return "Specify a status between {} and {}.".format(
+                CogPageGlobals.COG_UNSEEN, CogPageGlobals.COG_COMPLETE2)
+
+        deptIndices = list(range(len(SuitDNA.suitDepts)))
+        if department != 'all':
+            deptIndex = None
+            for deptChar, names in self.departmentNames.items():
+                if department in names:
+                    deptIndex = SuitDNA.suitDepts.index(deptChar)
+                    break
+            if deptIndex is None:
+                return "Unknown department \"{}\". Valid departments: boss, law, cash, sell, all.".format(department)
+            deptIndices = [deptIndex]
+
+        perDept = SuitDNA.suitsPerDept
+        total = perDept * len(SuitDNA.suitDepts)
+        cogs = list(toon.getCogStatus())
+        if len(cogs) != total:
+            cogs = [CogPageGlobals.COG_UNSEEN] * total
+        counts = list(toon.getCogCount())
+        if len(counts) != total:
+            counts = [0] * total
+        radar = list(toon.getCogRadar())
+        if len(radar) != len(SuitDNA.suitDepts):
+            radar = [0] * len(SuitDNA.suitDepts)
+        building = list(toon.getBuildingRadar())
+        if len(building) != len(SuitDNA.suitDepts):
+            building = [0] * len(SuitDNA.suitDepts)
+
+        for deptIndex in deptIndices:
+            for suitType in range(perDept):
+                cogs[deptIndex * perDept + suitType] = status
+            radar[deptIndex] = 1
+            building[deptIndex] = 1
+
+        toon.b_setCogStatus(cogs)
+        toon.b_setCogCount(counts)
+        toon.b_setCogRadar(radar)
+        toon.b_setBuildingRadar(building)
+        depts = 'all departments' if department == 'all' else SuitDNA.suitDeptFullnames[SuitDNA.suitDepts[deptIndices[0]]]
+        return "Seeded Cog-gallery data for {} on {}.".format(depts, toon.getName())
+
 class Sos(MagicWord):
     aliases = ["soscards"]
     desc = "Gives the target a few SOS cards and unlocks the SOS page."
