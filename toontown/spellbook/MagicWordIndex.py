@@ -553,6 +553,45 @@ class CatalogNext(MagicWord):
         week = catalogManager.advanceCatalogFor(invoker)
         return "Issued catalog week {} to {}.".format(week, invoker.getName())
 
+class Catalog(MagicWord):
+    """Dev-only catalog advance with a subcommand, self-only like CatalogNext."""
+    desc = ("Dev use only: 'catalog advance [n]' issues n catalogs (default 1) through "
+            "CatalogManagerAI.advanceCatalogFor, the same weekly-schedule path "
+            "'~catalognext' uses -- n=3 from a fresh avatar (whose first catalog is "
+            "always week 1) reaches week 4, CatalogGenerator.WeeklySchedule's first "
+            "slot offering nextAvailablePole.")
+    administrative = True
+    accessLevel = 'ADMIN'
+    affectRange = [MagicWordConfig.AFFECT_SELF]
+    execLocation = MagicWordConfig.EXEC_LOC_SERVER
+    arguments = [("command", str, False, ''), ("count", str, False, '')]
+
+    def handleWord(self, invoker, avId, toon, *args):
+        # Self-only, same reasoning as CatalogNext.
+        air = getattr(invoker, 'air', None)
+        catalogManager = getattr(air, 'catalogManager', None)
+        if catalogManager is None:
+            return "Catalog manager is not available."
+
+        command = (args[0] if len(args) > 0 else '') or ''
+        command = str(command).strip().lower()
+        if command != 'advance':
+            return "Specify a subcommand: 'advance [n]'."
+
+        countArg = (args[1] if len(args) > 1 else '') or ''
+        try:
+            count = int(countArg) if countArg else 1
+        except ValueError:
+            return "Specify an integer count."
+        if count < 1:
+            return "Count must be at least 1."
+
+        week = 0
+        for _ in range(count):
+            week = catalogManager.advanceCatalogFor(invoker)
+        return "Advanced {}'s catalog {} time(s), now at week {}.".format(
+            invoker.getName(), count, week)
+
 class Furnish(MagicWord):
     desc = "Debug use only: puts a gender-correct closet, a trunk and a bank into the target's house, plus a few plain items and a wallpaper/flooring/moulding/wainscoting/window set in the attic."
     execLocation = MagicWordConfig.EXEC_LOC_SERVER
