@@ -1837,9 +1837,12 @@ class SpawnCog(MagicWord):
     desc = "Spawn a specific street cog at your location."
     advancedDesc = "Creates a real street cog through the local zone's DistributedSuitPlannerAI, placed on " \
                    "the suit path point nearest you, so it's the same kind of cog you'd battle by walking " \
-                   "into it. Only works on a street zone that has a suit planner."
+                   "into it. Only works on a street zone that has a suit planner. The response names the " \
+                   "path point index it used; pass a pin index as the last argument to spawn on that exact " \
+                   "point and hold the cog there (no random walk, no fly-away) until a toon starts a battle " \
+                   "with it."
     execLocation = MagicWordConfig.EXEC_LOC_SERVER
-    arguments = [("cogName", str, True), ("level", int, False, -1), ("flag", str, False, "")]
+    arguments = [("cogName", str, True), ("level", int, False, -1), ("flag", str, False, ""), ("pin", int, False, -1)]
 
     def handleWord(self, invoker, avId, toon, *args):
         from toontown.suit import SuitDNA
@@ -1848,6 +1851,7 @@ class SpawnCog(MagicWord):
         cogNameArg = args[0]
         level = args[1]
         flag = args[2].lower()
+        pin = args[3]
 
         suitName = None
         if cogNameArg in SuitDNA.suitHeadTypes:
@@ -1883,15 +1887,30 @@ class SpawnCog(MagicWord):
         if not planner.streetPointList:
             return "This street has no suit path points."
 
-        toonPos = toon.getPos()
-        nearestPoint = min(planner.streetPointList, key=lambda p: (p.getPos() - toonPos).lengthSquared())
+        if pin != -1:
+            spawnPoint = planner.pointIndexes.get(pin)
+            if spawnPoint is None:
+                return "No suit path point with index %d in this zone." % pin
+        else:
+            toonPos = toon.getPos()
+            spawnPoint = min(planner.streetPointList, key=lambda p: (p.getPos() - toonPos).lengthSquared())
 
-        newSuit = planner.createNewSuit([], [nearestPoint], suitLevel=level, suitName=suitName,
+        newSuit = planner.createNewSuit([], [spawnPoint], suitLevel=level, suitName=suitName,
                                          skelecog=(flag == "skelecog"), revives=(1 if flag == "revive" else None))
         if newSuit is None:
-            return "Failed to spawn %s -- no free path point near you." % attrs['name']
+            return "Failed to spawn %s -- no free path point at that spot." % attrs['name']
 
-        return "Spawned a level %d %s near you." % (newSuit.getActualLevel(), attrs['name'])
+        if pin != -1:
+            # Keep the suit on this exact point: cancel the planner's own leg
+            # advancement so it's never taken off-path or flown away, and tell
+            # the client (only) to stop walking, so it stays put visually too.
+            # newSuit.pathState/legType are left at their post-spawn values
+            # (1/TWalk), so requestBattle() still accepts a battle normally.
+            newSuit.stopPathNow()
+            newSuit.d_setPathState(0)
+            return "Spawned a level %d %s pinned to point %d." % (newSuit.getActualLevel(), attrs['name'], pin)
+
+        return "Spawned a level %d %s near you (point %d)." % (newSuit.getActualLevel(), attrs['name'], spawnPoint.getIndex())
 
 class GlobalTeleport(MagicWord):
     aliases = ["globaltp", "tpaccess"]
