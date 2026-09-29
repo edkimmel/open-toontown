@@ -60,6 +60,49 @@ for word in spellbook['words']:
         pass
 
 
+def parseMagicWordArgs(magicWordInfo, args):
+    """Split and type-convert a magic word's chat argument string the same
+    way a real chat message is handled in requestExecuteMagicWord below.
+
+    Returns (parsedArgList, None) on success, or (None, (responseType,
+    extraMessageData)) if the args don't fit the word's argument list.
+    """
+    commandArgs = magicWordInfo['args']
+
+    maxArgs = len(commandArgs)
+    minArgs = 0
+    argList = args.split(None, maxArgs - 1)
+    for argSet in commandArgs:
+        isRequired = argSet[ARGUMENT_REQUIRED]
+        if isRequired:
+            minArgs += 1
+
+    messageData = "{} argument{}"
+    if len(argList) < minArgs:
+        return None, ("NotEnoughArgs", messageData.format(minArgs, "s" if minArgs != 1 else ''))
+    elif len(argList) > maxArgs:
+        return None, ("TooManyArgs", messageData.format(maxArgs, "s" if maxArgs != 1 else ''))
+
+    if len(argList) < maxArgs:
+        for x in range(minArgs, maxArgs):
+            if commandArgs[x][ARGUMENT_REQUIRED] or len(argList) >= x + 1:
+                continue
+            argList.append(commandArgs[x][ARGUMENT_DEFAULT])
+
+    parsedArgList = []
+    for x in range(len(argList)):
+        arg = argList[x]
+        argType = commandArgs[x][ARGUMENT_TYPE]
+        try:
+            parsedArg = argType(arg)
+        except:
+            return None, ("BadArgs", '')
+
+        parsedArgList.append(parsedArg)
+
+    return parsedArgList, None
+
+
 class ToontownMagicWordManagerAI(DistributedObjectAI.DistributedObjectAI):
     notify = DirectNotifyGlobal.directNotify.newCategory('ToontownMagicWordManagerAI')
 
@@ -216,49 +259,13 @@ class ToontownMagicWordManagerAI(DistributedObjectAI.DistributedObjectAI):
             self.generateResponse(avId=avId, responseType="RestrictionOther")
             return
 
-        # Get the arguments the Magic Word will accept
-        commandArgs = magicWordInfo['args']
-
-        # Determine the max and min amount of arguments the word will accept
-        maxArgs = len(commandArgs)
-        minArgs = 0
-        argList = args.split(None, maxArgs-1)
-        for argSet in commandArgs:
-            isRequired = argSet[ARGUMENT_REQUIRED]
-            if isRequired:
-                minArgs += 1
-
-        # If we have less arguments provided than are required, let the invoker know that
-        messageData = "{} argument{}"
-        if len(argList) < minArgs:
-            messageData = messageData.format(minArgs, "s" if minArgs != 1 else '')
-            self.generateResponse(avId=avId, responseType="NotEnoughArgs", extraMessageData=messageData)
+        # Split and type-convert the chat argument string using the same
+        # logic the fake-air tests drive directly (parseMagicWordArgs above)
+        parsedArgList, error = parseMagicWordArgs(magicWordInfo, args)
+        if error is not None:
+            responseType, extraMessageData = error
+            self.generateResponse(avId=avId, responseType=responseType, extraMessageData=extraMessageData)
             return
-        # On the other hand, if we have more than what we need, tell them that instead
-        elif len(argList) > maxArgs:
-            messageData = messageData.format(maxArgs, "s" if maxArgs != 1 else '')
-            self.generateResponse(avId=avId, responseType="TooManyArgs", extraMessageData=messageData)
-            return
-
-        # If we have less arguments provided than the max, use the defaults of the ones not provided
-        if len(argList) < maxArgs:
-            for x in range(minArgs, maxArgs):
-                if commandArgs[x][ARGUMENT_REQUIRED] or len(argList) >= x + 1:
-                    continue
-                argList.append(commandArgs[x][ARGUMENT_DEFAULT])
-
-        # Parse through all the args we had provided
-        parsedArgList = []
-        for x in range(len(argList)):
-            arg = argList[x]
-            argType = commandArgs[x][ARGUMENT_TYPE]
-            try:
-                parsedArg = argType(arg)
-            except:
-                self.generateResponse(avId=avId, responseType="BadArgs")
-                return
-
-            parsedArgList.append(parsedArg)
 
         # If this is a client-sided Magic Word, execute it on the client
         if magicWordInfo['execLocation'] == EXEC_LOC_CLIENT:

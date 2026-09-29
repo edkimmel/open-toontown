@@ -1833,25 +1833,49 @@ class BossBattle(MagicWord):
         boss.requestDelete()
         self.air.deallocateZone(bossZone)
 
+def _parseSpawnCogPin(value):
+    # The generic magic-word parser splits args by position only, so "pin=420"
+    # can land in either the pin slot or the flag slot ahead of it (see
+    # handleWord below for the flag-slot case). Accept both a bare int and a
+    # "pin=<n>" keyword here so "~spawncog f 1 skelecog pin=420" also works.
+    if isinstance(value, int):
+        return value
+    text = value.strip()
+    if text.lower().startswith("pin="):
+        text = text[4:]
+    return int(text)
+
 class SpawnCog(MagicWord):
     desc = "Spawn a specific street cog at your location."
     advancedDesc = "Creates a real street cog through the local zone's DistributedSuitPlannerAI, placed on " \
                    "the suit path point nearest you, so it's the same kind of cog you'd battle by walking " \
                    "into it. Only works on a street zone that has a suit planner. The response names the " \
-                   "path point index it used; pass a pin index as the last argument to spawn on that exact " \
-                   "point and hold the cog there (no random walk, no fly-away) until a toon starts a battle " \
-                   "with it."
+                   "path point index it used; pass a pin index as the last argument, or \"pin=<n>\" in place " \
+                   "of the flag (e.g. \"~spawncog f 1 pin=420\"), to spawn on that exact point and hold the " \
+                   "cog there (no random walk, no fly-away) until a toon starts a battle with it. If a suit " \
+                   "is already sitting on the pinned point, it's cleared first."
     execLocation = MagicWordConfig.EXEC_LOC_SERVER
-    arguments = [("cogName", str, True), ("level", int, False, -1), ("flag", str, False, ""), ("pin", int, False, -1)]
+    arguments = [("cogName", str, True), ("level", int, False, -1), ("flag", str, False, ""),
+                 ("pin", _parseSpawnCogPin, False, -1)]
 
     def handleWord(self, invoker, avId, toon, *args):
-        from toontown.suit import SuitDNA
+        from toontown.suit import SuitDNA, SuitTimings
         from toontown.battle import SuitBattleGlobals
 
         cogNameArg = args[0]
         level = args[1]
         flag = args[2].lower()
         pin = args[3]
+
+        # "~spawncog f 1 pin=420" fills the flag slot (there's no way to type
+        # an empty positional argument), not the pin slot -- pull pin out of
+        # it and treat the flag as unset.
+        if pin == -1 and flag.startswith("pin="):
+            try:
+                pin = _parseSpawnCogPin(flag)
+            except ValueError:
+                return "Unknown flag \"%s\". Use \"skelecog\" or \"revive\"." % flag
+            flag = ""
 
         suitName = None
         if cogNameArg in SuitDNA.suitHeadTypes:
@@ -1895,9 +1919,23 @@ class SpawnCog(MagicWord):
             toonPos = toon.getPos()
             spawnPoint = min(planner.streetPointList, key=lambda p: (p.getPos() - toonPos).lengthSquared())
 
+        clearedOccupant = False
+        if pin != -1:
+            # A dev word may pin a suit on this exact point (see below), and that
+            # suit's path never advances, so it (or a planner-spawned cog that
+            # wandered onto the same point) can still be sitting there on a
+            # later call. Clear whatever's occupying the point before retrying,
+            # same as other dev words that remove a blocking suit outright.
+            occupants = [s for s in planner.suitList if s.pointInMyPath(spawnPoint, SuitTimings.fromSky)]
+            for occupant in occupants:
+                planner.removeSuit(occupant)
+                clearedOccupant = True
+
         newSuit = planner.createNewSuit([], [spawnPoint], suitLevel=level, suitName=suitName,
                                          skelecog=(flag == "skelecog"), revives=(1 if flag == "revive" else None))
         if newSuit is None:
+            if clearedOccupant:
+                return "Failed to spawn %s -- point %d is still blocked (probably a battle nearby)." % (attrs['name'], pin)
             return "Failed to spawn %s -- no free path point at that spot." % attrs['name']
 
         if pin != -1:
