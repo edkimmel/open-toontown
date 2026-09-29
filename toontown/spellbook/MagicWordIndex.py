@@ -1841,6 +1841,19 @@ def _pinSpawnedCogOnceWalking(suit):
     # :75-80). Pinning immediately would freeze the suit mid-flight with no
     # detector and a battle-request that's always denied, so hold off on
     # stopping its path until its current leg is actually a walk leg.
+    #
+    # Scheduling the stop for the walk leg's *start* isn't safe either: each
+    # client runs the leg clock on its own ClockDelta-synced time (synced at
+    # login, TimeManager.py:122-134), which can be off from the AI's by
+    # several hundred ms. A client that's behind the AI can still be sitting
+    # on the previous (non-walk) leg when setPathState(0) arrives, sees no
+    # battle detector, and never sends requestBattle (DistributedSuitBase.py
+    # :222-223). Scheduling for the leg's midpoint instead gives every client
+    # within +-half the leg's duration of the AI's clock room to also be on
+    # the walk leg when the stop lands. Prefer a walk leg whose midpoint
+    # margin is at least 1s (leg duration >= 2s, SuitLeg.getLegTime(),
+    # DistributedSuit.py:450); if none qualifies, use the first walk leg
+    # anyway and note the shorter margin.
     from panda3d.toontown import SuitLeg
     from direct.task import Task
 
@@ -1855,15 +1868,28 @@ def _pinSpawnedCogOnceWalking(suit):
         pinNow()
         return
 
-    walkStartTime = None
+    walkLeg = None
     for legIndex in range(suit.currentLeg, suit.legList.getNumLegs()):
         if suit.legList.getType(legIndex) == SuitLeg.TWalk:
-            walkStartTime = suit.legList.getStartTime(legIndex)
-            break
-    if walkStartTime is None:
+            legTime = suit.legList.getLeg(legIndex).getLegTime()
+            if walkLeg is None:
+                walkLeg = (legIndex, legTime)
+            if legTime >= 2.0:
+                walkLeg = (legIndex, legTime)
+                break
+    if walkLeg is None:
         return
 
-    delay = max(walkStartTime - (globalClock.getFrameTime() - suit.pathStartTime), 0.0)
+    legIndex, legTime = walkLeg
+    if legTime < 2.0:
+        MagicWord.notify.warning(
+            'spawnCog pin: no walk leg on this path has a >=1s midpoint '
+            'margin (longest candidate is leg %d, %.2fs); using it anyway, '
+            'clients with clock drift beyond half that may miss the pin' %
+            (legIndex, legTime))
+
+    pinTime = suit.legList.getStartTime(legIndex) + 0.5 * legTime
+    delay = max(pinTime - (globalClock.getFrameTime() - suit.pathStartTime), 0.0)
     taskMgr.doMethodLater(delay, pinNow, suit.taskName('spawnCogPin'))
 
 def _parseSpawnCogPin(value):
