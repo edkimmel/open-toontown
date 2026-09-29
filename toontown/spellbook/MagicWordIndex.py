@@ -1987,6 +1987,11 @@ class SpawnCog(MagicWord):
             # same as other dev words that remove a blocking suit outright.
             occupants = [s for s in planner.suitList if s.pointInMyPath(spawnPoint, SuitTimings.fromSky)]
             for occupant in occupants:
+                # Stop the pending move task before deleting, same as the
+                # planner's own teardown (DistributedSuitPlannerAI.cleanup()),
+                # so a task fired after requestDelete() can't touch self.sp
+                # once it has been cleared to None.
+                occupant.stopTasks()
                 planner.removeSuit(occupant)
                 clearedOccupant = True
 
