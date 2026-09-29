@@ -1833,6 +1833,39 @@ class BossBattle(MagicWord):
         boss.requestDelete()
         self.air.deallocateZone(bossZone)
 
+def _pinSpawnedCogOnceWalking(suit):
+    # A freshly spawned suit's first leg is a fly-in (SuitLeg.TFromSky), not a
+    # walk leg: the client only enables its battle-detect collider on a walk
+    # ("bellicose") leg track (DistributedSuit.py:481), and requestBattle()
+    # refuses a battle unless legType is SuitLeg.TWalk (DistributedSuitAI.py
+    # :75-80). Pinning immediately would freeze the suit mid-flight with no
+    # detector and a battle-request that's always denied, so hold off on
+    # stopping its path until its current leg is actually a walk leg.
+    from panda3d.toontown import SuitLeg
+    from direct.task import Task
+
+    def pinNow(task=None):
+        if suit.isDeleted() or suit.pathState != 1:
+            return Task.done
+        suit.stopPathNow()
+        suit.d_setPathState(0)
+        return Task.done
+
+    if suit.legType == SuitLeg.TWalk:
+        pinNow()
+        return
+
+    walkStartTime = None
+    for legIndex in range(suit.currentLeg, suit.legList.getNumLegs()):
+        if suit.legList.getType(legIndex) == SuitLeg.TWalk:
+            walkStartTime = suit.legList.getStartTime(legIndex)
+            break
+    if walkStartTime is None:
+        return
+
+    delay = max(walkStartTime - (globalClock.getFrameTime() - suit.pathStartTime), 0.0)
+    taskMgr.doMethodLater(delay, pinNow, suit.taskName('spawnCogPin'))
+
 def _parseSpawnCogPin(value):
     # The generic magic-word parser splits args by position only, so "pin=420"
     # can land in either the pin slot or the flag slot ahead of it (see
@@ -1942,10 +1975,10 @@ class SpawnCog(MagicWord):
             # Keep the suit on this exact point: cancel the planner's own leg
             # advancement so it's never taken off-path or flown away, and tell
             # the client (only) to stop walking, so it stays put visually too.
-            # newSuit.pathState/legType are left at their post-spawn values
-            # (1/TWalk), so requestBattle() still accepts a battle normally.
-            newSuit.stopPathNow()
-            newSuit.d_setPathState(0)
+            # This only happens once the suit reaches a walk leg -- see
+            # _pinSpawnedCogOnceWalking -- so requestBattle() still accepts a
+            # battle normally.
+            _pinSpawnedCogOnceWalking(newSuit)
             return "Spawned a level %d %s pinned to point %d." % (newSuit.getActualLevel(), attrs['name'], pin)
 
         return "Spawned a level %d %s near you (point %d)." % (newSuit.getActualLevel(), attrs['name'], spawnPoint.getIndex())
