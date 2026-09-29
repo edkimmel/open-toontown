@@ -1983,6 +1983,37 @@ class SpawnCog(MagicWord):
 
         return "Spawned a level %d %s near you (point %d)." % (newSuit.getActualLevel(), attrs['name'], spawnPoint.getIndex())
 
+class MintFloor(MagicWord):
+    desc = "Pin the Cashbot mint floor the next mint you create will use."
+    advancedDesc = "Posts \"mintFloor-<avId>\" on the bboard (the same object MintManagerAI reads), so the " \
+                   "next mint your avatar creates (MintManagerAI.createMint, read per mint creation, before " \
+                   "the elevator ride starts) lands on that floor instead of a random one. The floor is " \
+                   "clamped to the mint's own floor count when it's actually read, same as a normal " \
+                   "out-of-range value would be. Call with no argument, or -1, to clear the pin."
+    execLocation = MagicWordConfig.EXEC_LOC_SERVER
+    arguments = [("floor", int, False, -1)]
+
+    def handleWord(self, invoker, avId, toon, *args):
+        from toontown.toonbase import ToontownGlobals
+
+        floor = args[0]
+        key = 'mintFloor-%s' % avId
+
+        if floor == -1:
+            if bboard.has(key):
+                bboard.remove(key)
+            return "Cleared the pinned mint floor for %s." % toon.getName()
+
+        # All three Cashbot mints currently have the same floor count
+        # (ToontownGlobals.MintNumFloors); validate against the smallest of
+        # them so the pin is valid no matter which mint is actually created.
+        numFloors = min(ToontownGlobals.MintNumFloors.values())
+        if not 0 <= floor < numFloors:
+            return "Floor must be between 0 and %d." % (numFloors - 1)
+
+        bboard.post(key, floor)
+        return "Pinned %s's next mint to floor %d." % (toon.getName(), floor)
+
 class GlobalTeleport(MagicWord):
     aliases = ["globaltp", "tpaccess"]
     desc = "Enables teleport access to all zones."
