@@ -1892,6 +1892,14 @@ def _pinSpawnedCogOnceWalking(suit):
     delay = max(pinTime - (globalClock.getFrameTime() - suit.pathStartTime), 0.0)
     taskMgr.doMethodLater(delay, pinNow, suit.taskName('spawnCogPin'))
 
+def _pointNextToBattle(planner, point):
+    points = planner.dnaStore.getAdjacentPoints(point)
+    for i in range(points.getNumPoints()):
+        adjacentPoint = planner.pointIndexes.get(points.getPointIndex(i))
+        if adjacentPoint is not None and planner.battleCollision(point, adjacentPoint):
+            return True
+    return False
+
 def _parseSpawnCogPin(value):
     # The generic magic-word parser splits args by position only, so "pin=420"
     # can land in either the pin slot or the flag slot ahead of it (see
@@ -1980,11 +1988,14 @@ class SpawnCog(MagicWord):
 
         clearedOccupant = False
         if pin != -1:
-            # A dev word may pin a suit on this exact point (see below), and that
-            # suit's path never advances, so it (or a planner-spawned cog that
-            # wandered onto the same point) can still be sitting there on a
-            # later call. Clear whatever's occupying the point before retrying,
-            # same as other dev words that remove a blocking suit outright.
+            # createNewSuit() refuses a point next to a battle cell no matter
+            # which suits are walking nearby, so don't remove anyone for nothing.
+            if _pointNextToBattle(planner, spawnPoint):
+                return "Failed to spawn %s -- point %d is next to a battle." % (attrs['name'], pin)
+
+            # Clear only the suits createNewSuit()'s own point check would
+            # collide with (DistributedSuitPlannerAI.pointCollision): those
+            # whose path crosses this point while the new suit flies in.
             occupants = [s for s in planner.suitList if s.pointInMyPath(spawnPoint, SuitTimings.fromSky)]
             for occupant in occupants:
                 # Stop the pending move task before deleting, same as the
@@ -2009,10 +2020,44 @@ class SpawnCog(MagicWord):
             # This only happens once the suit reaches a walk leg -- see
             # _pinSpawnedCogOnceWalking -- so requestBattle() still accepts a
             # battle normally.
+            newSuit.spawnCogPinned = 1
             _pinSpawnedCogOnceWalking(newSuit)
             return "Spawned a level %d %s pinned to point %d." % (newSuit.getActualLevel(), attrs['name'], pin)
 
         return "Spawned a level %d %s near you (point %d)." % (newSuit.getActualLevel(), attrs['name'], spawnPoint.getIndex())
+
+class SuitPlanner(MagicWord):
+    desc = "Pause or resume the suit planner on your street."
+    advancedDesc = "\"pause\" stops the street's DistributedSuitPlannerAI from spawning new cogs and sends "                    "every cog still walking its path there flying away, so none can wander into a battle "                    "cell and join. Cogs already in a battle and cogs pinned with \"~spawncog ... pin=<n>\" "                    "are left alone, and ~spawncog still works while paused. \"resume\" restarts normal "                    "spawning."
+    execLocation = MagicWordConfig.EXEC_LOC_SERVER
+    arguments = [("action", str, True)]
+
+    def handleWord(self, invoker, avId, toon, *args):
+        from toontown.hood import ZoneUtil
+
+        action = args[0].lower()
+        if action not in ("pause", "resume"):
+            return "Unknown action \"%s\". Use \"pause\" or \"resume\"." % action
+
+        streetId = ZoneUtil.getBranchZone(toon.zoneId)
+        planner = self.air.suitPlanners.get(streetId)
+        if planner is None:
+            return "There's no suit planner in this zone -- go to a street first."
+
+        if action == "resume":
+            if not planner.populationPaused:
+                return "The suit planner for street %d isn't paused." % streetId
+            planner.resumePopulation()
+            return "Resumed the suit planner for street %d." % streetId
+
+        planner.pausePopulation()
+        flown = 0
+        for suit in planner.suitList[:]:
+            if suit.pathState == 1 and not getattr(suit, 'spawnCogPinned', 0):
+                suit.flyAwayNow()
+                flown += 1
+
+        return "Paused the suit planner for street %d (%d walking cogs sent away)." % (streetId, flown)
 
 class MintFloor(MagicWord):
     desc = "Pin the Cashbot mint floor the next mint you create will use."

@@ -121,6 +121,7 @@ class DistributedSuitPlannerAI(DistributedObjectAI.DistributedObjectAI, SuitPlan
         self.pendingBuildingHeights = []
         self.pendingCogdoHeights = []
         self.suitList = []
+        self.populationPaused = 0
         self.numFlyInSuits = 0
         self.numBuildingSuits = 0
         self.numAttemptingTakeover = 0
@@ -581,6 +582,16 @@ class DistributedSuitPlannerAI(DistributedObjectAI.DistributedObjectAI, SuitPlan
     def __waitForNextAdjust(self):
         t = random.random() * 10.0 + self.POP_ADJUST_DELAY
         taskMgr.doMethodLater(t, self.adjustSuitPopulation, self.taskName('sptAdjustPopulation'))
+
+    def pausePopulation(self):
+        self.populationPaused = 1
+        taskMgr.remove(self.taskName('sptUpkeepPopulation'))
+
+    def resumePopulation(self):
+        if not self.populationPaused:
+            return
+        self.populationPaused = 0
+        self.__waitForNextUpkeep()
 
     def upkeepSuitPopulation(self, task):
         targetFlyInNum = self.calcDesiredNumFlyInSuits()
