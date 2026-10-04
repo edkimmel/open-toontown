@@ -2059,6 +2059,52 @@ class SuitPlanner(MagicWord):
 
         return "Paused the suit planner for street %d (%d walking cogs sent away)." % (streetId, flown)
 
+class BldgTakeover(MagicWord):
+    desc = "Flip a building on your street between toon and suit state."
+    advancedDesc = "\"suit\" makes the toon building on the given block of your street zone a cog building of " \
+                   "the given department (c, l, m, s; default c) and difficulty (default 0), running the " \
+                   "building's becomingSuit -> suit transition. \"toon\" turns a suit building back into a toon " \
+                   "building (becomingToon -> toon). Only works on a street zone with a building manager."
+    execLocation = MagicWordConfig.EXEC_LOC_SERVER
+    arguments = [("state", str, True), ("block", int, True), ("dept", str, False, "c"),
+                 ("difficulty", int, False, 0)]
+
+    def handleWord(self, invoker, avId, toon, *args):
+        from toontown.hood import ZoneUtil
+        from toontown.building import SuitBuildingGlobals
+        from toontown.suit import SuitDNA
+
+        state = args[0].lower()
+        block = args[1]
+        dept = args[2].lower()
+        difficulty = args[3]
+        if state not in ("toon", "suit"):
+            return "Unknown state \"%s\". Use \"toon\" or \"suit\"." % state
+
+        streetId = ZoneUtil.getBranchZone(toon.zoneId)
+        mgr = self.air.buildingManagers.get(streetId)
+        if mgr is None:
+            return "There's no building manager in this zone -- go to a street first."
+        if not mgr.isValidBlockNumber(block):
+            return "Block %d isn't a building on street %d." % (block, streetId)
+        building = mgr.getBuilding(block)
+
+        if state == "toon":
+            if not building.isSuitBlock():
+                return "Block %d isn't a suit building." % block
+            building.toonTakeOver()
+            return "Block %d is becoming a toon building." % block
+
+        if dept not in SuitDNA.suitDepts:
+            return "Unknown department \"%s\". Use one of: %s." % (dept, ", ".join(SuitDNA.suitDepts))
+        maxDifficulty = len(SuitBuildingGlobals.SuitBuildingInfo) - 1
+        if difficulty < 0 or difficulty > maxDifficulty:
+            return "Difficulty must be between 0 and %d." % maxDifficulty
+        if not building.isToonBlock():
+            return "Block %d isn't a toon building." % block
+        building.suitTakeOver(dept, difficulty, None)
+        return "Block %d is becoming a %s building (difficulty %d)." % (block, dept, difficulty)
+
 class MintFloor(MagicWord):
     desc = "Pin the Cashbot mint floor the next mint you create will use."
     advancedDesc = "Posts \"mintFloor-<avId>\" on the bboard (the same object MintManagerAI reads), so the " \
