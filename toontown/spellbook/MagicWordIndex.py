@@ -2105,6 +2105,32 @@ class BldgTakeover(MagicWord):
         building.suitTakeOver(dept, difficulty, None)
         return "Block %d is becoming a %s building (difficulty %d)." % (block, dept, difficulty)
 
+class Invasion(MagicWord):
+    desc = "Start or stop a Cog invasion."
+    advancedDesc = "\"~invasion <cogType> [numCogs] [skeleton]\" starts an invasion of the given Cog (a SuitDNA " \
+                   "head code such as f, p or ym; default 1000 cogs, skeleton 0 or 1), announcing it to every " \
+                   "player and flying away the walking street cogs. \"~invasion stop\" ends the current invasion."
+    execLocation = MagicWordConfig.EXEC_LOC_SERVER
+    arguments = [("cogType", str, True), ("numCogs", int, False, 1000), ("skeleton", int, False, 0)]
+
+    def handleWord(self, invoker, avId, toon, *args):
+        manager = self.air.suitInvasionManager
+        cogType = args[0].lower()
+        if cogType == "stop":
+            if not manager.getInvading():
+                return "There's no invasion in progress."
+            manager.stopInvasion()
+            return "Stopped the invasion."
+
+        if manager.getInvading():
+            return "An invasion of %s is already in progress (%d cogs left). Use \"~invasion stop\" first." % (
+                manager.getCogType()[0], manager.getNumCogsRemaining())
+        if args[1] < 1:
+            return "numCogs must be at least 1."
+        if not manager.startInvasion(cogType, args[1], 1 if args[2] else 0):
+            return "Unknown cog type \"%s\". Use a SuitDNA head code such as f, p or ym." % cogType
+        return "Started an invasion of %d %s%s." % (args[1], cogType, " (skeleton)" if args[2] else "")
+
 class MintFloor(MagicWord):
     desc = "Pin the Cashbot mint floor the next mint you create will use."
     advancedDesc = "Posts \"mintFloor-<avId>\" on the bboard (the same object MintManagerAI reads), so the " \
