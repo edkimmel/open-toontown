@@ -455,8 +455,11 @@ class ToontownAIRepository(ToontownInternalRepository):
             devZone = config.GetInt('dev-force-suit-building-zone', ToontownGlobals.LoopyLane)
             devSuitPlanner = self.suitPlanners.get(devZone)
             if devSuitPlanner is not None and devSuitPlanner.buildingMgr is not None:
-                devSuitPlanner.suitTakeOver(4, 'c', 1, 2)
-                self.notify.info('want-dev-force-suit-building: forced suitTakeOver(block=4, track=c, difficulty=1, height=2) on zone %d for elevator_headless.gd' % devZone)
+                # buildingHeight 1 gives numFloors 2, inside the (1, 2) floor
+                # range of difficulty 1; a height of 2 gave 3 floors, outside
+                # that range, so the count was re-rolled on every boot.
+                devSuitPlanner.suitTakeOver(4, 'c', 1, 1)
+                self.notify.info('want-dev-force-suit-building: forced suitTakeOver(block=4, track=c, difficulty=1, height=1) on zone %d for elevator_headless.gd' % devZone)
             else:
                 self.notify.warning('want-dev-force-suit-building: no suitPlanner/buildingMgr for zone %d, could not force a suit building' % devZone)
 
