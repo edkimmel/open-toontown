@@ -1660,8 +1660,13 @@ class Quests(MagicWord):
             if result is None:
                 return f"Unknown questId {questId}."
             return f"Gave {toon.getName()} quest {questId}" + (f" (progress {questProgress})." if questProgress else ".")
+        elif command == "reset":
+            toon.b_setQuests([])
+            toon.b_setQuestHistory([])
+            toon.b_setRewardHistory(0, [])
+            return f"Reset quests, quest history and reward history for {toon.getName()}."
         else:
-            return "Valid commands: \"finish\", \"add\""
+            return "Valid commands: \"finish\", \"add\", \"reset\""
 
 class Factory(MagicWord):
     desc = "Quickly start a Sellbot Factory."
