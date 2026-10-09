@@ -2469,6 +2469,31 @@ class Befriend(MagicWord):
         return "{} and {} are now reciprocal friends.".format(toon.getName(), other.getName())
 
 
+class Unfriend(MagicWord):
+    """Dev-only reset for live tests which require toons that are not friends."""
+    desc = ("Removes the friendship between the invoker and one other toon "
+            "currently connected to this AI, using "
+            "FriendManagerAI.removeFriends so both persistent friend lists "
+            "follow the normal server path.")
+    execLocation = MagicWordConfig.EXEC_LOC_SERVER
+    accessLevel = 'ADMIN'
+    arguments = [("otherId", int, True)]
+
+    def handleWord(self, invoker, avId, toon, *args):
+        otherId = int(args[0])
+        if otherId == avId:
+            return "Specify another live toon."
+        other = self.air.doId2do.get(otherId)
+        if other is None or other.__class__.__name__ != 'DistributedToonAI':
+            return "Toon {} is not live on this AI.".format(otherId)
+        friendMgr = getattr(self.air, 'friendManager', None)
+        if friendMgr is None:
+            return "No friend manager on this AI."
+        if not friendMgr.removeFriends(avId, otherId):
+            return "{} and {} are not friends.".format(toon.getName(), other.getName())
+        return "{} and {} are no longer friends.".format(toon.getName(), other.getName())
+
+
 class Petbrain(MagicWord):
     """Read-only live evidence for one generated pet's peer registration."""
     desc = ("Reports whether the invoker's generated pet has registered one "

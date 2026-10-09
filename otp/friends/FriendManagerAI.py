@@ -248,6 +248,21 @@ class FriendManagerAI(DistributedObjectAI):
         other.b_setFriendsList(other.getFriendsList())
         return True
 
+    def removeFriends(self, avId, otherId):
+        """Inverse of makeFriends: drop each toon from the other's list."""
+        toon = self._getToon(avId)
+        other = self._getToon(otherId)
+        if toon is None or other is None:
+            self.notify.warning('removeFriends(%s, %s): not both on this AI' % (avId, otherId))
+            return False
+
+        if not self._isFriendOf(toon, otherId) and not self._isFriendOf(other, avId):
+            return False
+
+        toon.b_setFriendsList([pair for pair in self._friendsList(toon) if pair[0] != otherId])
+        other.b_setFriendsList([pair for pair in self._friendsList(other) if pair[0] != avId])
+        return True
+
     def forgetAvatar(self, avId):
         """Drop any pending invite that mentions an avatar that has left."""
         for context in [c for c, pair in self.invites.items() if avId in pair]:
