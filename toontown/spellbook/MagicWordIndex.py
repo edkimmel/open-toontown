@@ -2067,12 +2067,12 @@ class SuitPlanner(MagicWord):
 class BldgTakeover(MagicWord):
     desc = "Flip a building on your street between toon and suit state."
     advancedDesc = "\"suit\" makes the toon building on the given block of your street zone a cog building of " \
-                   "the given department (c, l, m, s; default c) and difficulty (default 0), running the " \
+                   "the given department (c, l, m, s; default c), difficulty (default 0) and floors (default 0 = random in the difficulty range), running the " \
                    "building's becomingSuit -> suit transition. \"toon\" turns a suit building back into a toon " \
                    "building (becomingToon -> toon). Only works on a street zone with a building manager."
     execLocation = MagicWordConfig.EXEC_LOC_SERVER
     arguments = [("state", str, True), ("block", int, True), ("dept", str, False, "c"),
-                 ("difficulty", int, False, 0)]
+                 ("difficulty", int, False, 0), ("floors", int, False, 0)]
 
     def handleWord(self, invoker, avId, toon, *args):
         from toontown.hood import ZoneUtil
@@ -2083,6 +2083,7 @@ class BldgTakeover(MagicWord):
         block = args[1]
         dept = args[2].lower()
         difficulty = args[3]
+        floors = args[4] if len(args) > 4 else 0
         if state not in ("toon", "suit"):
             return "Unknown state \"%s\". Use \"toon\" or \"suit\"." % state
 
@@ -2107,7 +2108,8 @@ class BldgTakeover(MagicWord):
             return "Difficulty must be between 0 and %d." % maxDifficulty
         if not building.isToonBlock():
             return "Block %d isn't a toon building." % block
-        building.suitTakeOver(dept, difficulty, None)
+        # floors > 0 pins numFloors (suitTakeOver buildingHeight = floors - 1); 0 rolls the difficulty range.
+        building.suitTakeOver(dept, difficulty, floors - 1 if floors > 0 else None)
         return "Block %d is becoming a %s building (difficulty %d)." % (block, dept, difficulty)
 
 class Invasion(MagicWord):
