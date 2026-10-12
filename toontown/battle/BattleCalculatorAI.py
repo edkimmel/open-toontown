@@ -77,7 +77,7 @@ class BattleCalculatorAI:
         toon = self.battle.getToon(attackIndex)
         if self.toonsAlwaysHit or toon.instantKillMode:
             return (1, 95)
-        elif self.toonsAlwaysMiss:
+        elif self.toonsAlwaysMiss or toon.alwaysMissMode:
             return (0, 0)
         debug = self.notify.getDebug()
         attack = self.battle.toonAttacks[attackIndex]

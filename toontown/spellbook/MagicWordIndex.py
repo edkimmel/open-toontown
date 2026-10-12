@@ -2285,6 +2285,15 @@ class ToggleInstantKill(MagicWord):
         toon.setInstantKillMode(not toon.instantKillMode)
         return f"Toggled instant-kill mode for {toon.getName()}"
 
+class ToggleAlwaysMiss(MagicWord):
+    aliases = ["alwaysmiss"]
+    desc = "Toggle whether this toon's gags always miss."
+    execLocation = MagicWordConfig.EXEC_LOC_SERVER
+
+    def handleWord(self, invoker, avId, toon, *args):
+        toon.setAlwaysMissMode(not toon.alwaysMissMode)
+        return f"Toggled always-miss mode for {toon.getName()}"
+
 class Fireworks(MagicWord):
     aliases = ["firework"]
     desc = "Starts a firework show."

@@ -161,6 +161,7 @@ class DistributedToonAI(DistributedPlayerAI.DistributedPlayerAI, DistributedSmoo
         self.ghostMode = 0
         self.immortalMode = 0
         self.instantKillMode = 0
+        self.alwaysMissMode = 0
         self.numPies = 0
         self.pieType = 0
         self._isGM = False
@@ -2368,6 +2369,9 @@ class DistributedToonAI(DistributedPlayerAI.DistributedPlayerAI, DistributedSmoo
 
     def setInstantKillMode(self, flag):
         self.instantKillMode = flag
+
+    def setAlwaysMissMode(self, flag):
+        self.alwaysMissMode = flag
 
     def b_setSpeedChatStyleIndex(self, index):
         self.setSpeedChatStyleIndex(index)
