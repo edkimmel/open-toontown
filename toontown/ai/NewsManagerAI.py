@@ -25,7 +25,6 @@ class NewsManagerAI(DistributedObjectAI):
         self.accept('avatarEntered', self.__handleAvatarEntered)
 
     def __handleAvatarEntered(self, avatar):
-        self.sendUpdateToAvatarId(avatar.getDoId(), 'setHolidayIdList', [self.getHolidayIdList()])
         if self.air.suitInvasionManager.getInvading():
             cogType, skeleton = self.air.suitInvasionManager.getCogType()
             numRemaining = self.air.suitInvasionManager.getNumCogsRemaining()
