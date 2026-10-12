@@ -25,10 +25,17 @@ class NewsManagerAI(DistributedObjectAI):
         self.accept('avatarEntered', self.__handleAvatarEntered)
 
     def __handleAvatarEntered(self, avatar):
+        self.sendUpdateToAvatarId(avatar.getDoId(), 'setHolidayIdList', [self.getHolidayIdList()])
         if self.air.suitInvasionManager.getInvading():
             cogType, skeleton = self.air.suitInvasionManager.getCogType()
             numRemaining = self.air.suitInvasionManager.getNumCogsRemaining()
             self.sendAvatarInvasionStatus(avatar.getDoId(), cogType, numRemaining, skeleton)
+
+    def getHolidayIdList(self):
+        return list(self.air.holidayManager.currentHolidays)
+
+    def sendHolidayIdList(self):
+        self.sendUpdate('setHolidayIdList', [self.getHolidayIdList()])
 
     def invasionBegin(self, cogType, numRemaining, skeleton):
         self.sendUpdate('setInvasionStatus', [ToontownGlobals.SuitInvasionBegin, cogType, numRemaining, skeleton])

@@ -2294,6 +2294,26 @@ class ToggleAlwaysMiss(MagicWord):
         toon.setAlwaysMissMode(not toon.alwaysMissMode)
         return f"Toggled always-miss mode for {toon.getName()}"
 
+class SetHoliday(MagicWord):
+    aliases = ["holiday"]
+    desc = "Starts or ends a holiday by id."
+    execLocation = MagicWordConfig.EXEC_LOC_SERVER
+    arguments = [("command", str, True), ("holidayId", int, True)]
+
+    def handleWord(self, invoker, avId, toon, *args):
+        command = args[0]
+        holidayId = args[1]
+        holidayManager = self.air.holidayManager
+        if command == "start":
+            if not holidayManager.startHoliday(holidayId):
+                return f"Holiday {holidayId} is already running."
+            return f"Started holiday {holidayId}."
+        if command == "end":
+            if not holidayManager.endHoliday(holidayId):
+                return f"Holiday {holidayId} is not running."
+            return f"Ended holiday {holidayId}."
+        return "Usage: ~holiday start|end <id>"
+
 class Fireworks(MagicWord):
     aliases = ["firework"]
     desc = "Starts a firework show."
