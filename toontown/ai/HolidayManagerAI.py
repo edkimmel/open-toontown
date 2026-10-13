@@ -28,3 +28,11 @@ class HolidayManagerAI:
 
     def isMoreXpHolidayRunning(self):
         return ToontownGlobals.MORE_XP_HOLIDAY in self.currentHolidays
+
+    def getCurPhase(self, holidayId):
+        if holidayId not in self.currentHolidays:
+            return -1
+        phaseMgr = self.currentHolidays[holidayId]
+        if phaseMgr is None:
+            return 1
+        return phaseMgr.getCurPhase()
