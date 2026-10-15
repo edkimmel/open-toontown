@@ -1685,12 +1685,13 @@ class BossBattle(MagicWord):
     aliases = ["boss"]
     desc = "Create a new or manupliate the current boss battle."
     execLocation = MagicWordConfig.EXEC_LOC_SERVER
-    arguments = [("command", str, True), ("type", str, False, ""), ("start", int, False, 1)]
+    arguments = [("command", str, True), ("type", str, False, ""), ("start", int, False, 1), ("target", int, False, 0)]
 
     def handleWord(self, invoker, avId, toon, *args):
         command = args[0].lower()
         type = args[1].lower()
         start = args[2]
+        target = args[3]
 
         """
         Commands:
@@ -1700,6 +1701,10 @@ class BossBattle(MagicWord):
           - skip: Skips the boss to the next state (needs getNextState to be implemented).
           - final: Skips the boss to the final round.
           - kill: Skips the boss to the Victory state.
+          - attack <area|directed|front|swatleft|swatright|dizzy> [start] [avId]: Forces one attack in
+            BattleThree and stops the random schedule. directed targets avId (default: you), who must be
+            in the battle.
+          - near: Sellbot only. Deals max damage in BattleThree and goes to the NearVictory state.
         """
 
         # create command shortcut:
@@ -1829,9 +1834,51 @@ class BossBattle(MagicWord):
             boss.b_setState("Victory")
             return "Killed the boss!"
 
+        elif command == "attack":
+            from toontown.toonbase import ToontownGlobals
+            attacks = {'area': ToontownGlobals.BossCogAreaAttack,
+                       'directed': ToontownGlobals.BossCogDirectedAttack,
+                       'front': ToontownGlobals.BossCogFrontAttack,
+                       'swatleft': ToontownGlobals.BossCogSwatLeft,
+                       'swatright': ToontownGlobals.BossCogSwatRight,
+                       'dizzy': ToontownGlobals.BossCogDizzyNow}
+            code = attacks.get(type)
+            if code is None:
+                return f"Unknown attack \"{type}\". Valid attacks: {', '.join(attacks)}."
+            if boss.getCurrentOrNextState() != 'BattleThree':
+                return "Attacks can only be forced in the BattleThree state."
+            targetId = 0
+            if code == ToontownGlobals.BossCogDirectedAttack:
+                targetId = target or invoker.doId
+                if targetId not in boss.involvedToons:
+                    return f"Toon {targetId} is not in this boss battle."
+            boss.stopAttacks()
+            boss.b_setAttackCode(code, targetId)
+            if code == ToontownGlobals.BossCogAreaAttack:
+                if boss.recoverRate:
+                    newRecoverRate = min(200, boss.recoverRate * 1.2)
+                else:
+                    newRecoverRate = 2
+                boss.b_setBossDamage(boss.getBossDamage(), newRecoverRate, globalClock.getFrameTime())
+            boss.stopAttacks()
+            return f"Boss attack: {type}."
+
+        elif command == "near":
+            from toontown.toonbase import ToontownGlobals
+            if boss.dept != 's':
+                return "The near command is only available for the VP."
+            if boss.getCurrentOrNextState() != 'BattleThree':
+                return "The boss must be in the BattleThree state."
+            boss.stopAttacks()
+            boss.b_setAttackCode(ToontownGlobals.BossCogDizzyNow)
+            boss.b_setBossDamage(boss.bossMaxDamage, 0, 0)
+            boss.stopAttacks()
+            boss.setState('NearVictory')
+            return "The boss is almost defeated!"
+
         # The create command is already described when the invoker is not in a battle.  These are the commands
         # they can use INSIDE the battle.
-        return f"Unknown command: \"{command}\". Valid commands: \"start\", \"stop\", \"skip\", \"final\", \"kill\"."
+        return f"Unknown command: \"{command}\". Valid commands: \"start\", \"stop\", \"skip\", \"final\", \"kill\", \"attack\", \"near\"."
 
     def __destroyBoss(self, boss):
         bossZone = boss.zoneId
