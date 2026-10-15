@@ -2064,6 +2064,45 @@ class SuitPlanner(MagicWord):
 
         return "Paused the suit planner for street %d (%d walking cogs sent away)." % (streetId, flown)
 
+class SuitAttack(MagicWord):
+    desc = "Force the attack every cog picks, or return to random."
+    advancedDesc = "Sets the attack-type used by pickSuitAttack for every battle on this AI, e.g. "                    "\"~suitattack BrainStorm\". A cog whose attack list lacks the named attack falls back to "                    "its normal random pick (logged). \"random\" restores random picks; with no argument the "                    "current setting is reported."
+    execLocation = MagicWordConfig.EXEC_LOC_SERVER
+    arguments = [("attackName", str, False, "")]
+
+    def handleWord(self, invoker, avId, toon, *args):
+        from toontown.battle import SuitBattleGlobals
+
+        name = args[0]
+        if not name:
+            current = SuitBattleGlobals.attackTypeOverride
+            if current is None:
+                current = simbase.config.GetString('attack-type', 'random')
+            return "Suit attack is \"%s\"." % current
+
+        if name.lower() == "random":
+            name = "random"
+        elif name not in SuitBattleGlobals.SuitAttacks:
+            return "Unknown suit attack \"%s\"." % name
+
+        SuitBattleGlobals.attackTypeOverride = name
+        return "Suit attack set to \"%s\"." % name
+
+class SuitsAlwaysHit(MagicWord):
+    desc = "Make every cog attack hit (or restore normal accuracy)."
+    advancedDesc = "Toggles BattleCalculatorAI.suitsAlwaysHit (prc suits-always-hit) at runtime for all battles "                    "on this AI. \"1\" forces hits, \"0\" restores the accuracy roll, no argument flips the current value."
+    execLocation = MagicWordConfig.EXEC_LOC_SERVER
+    arguments = [("enabled", int, False, -1)]
+
+    def handleWord(self, invoker, avId, toon, *args):
+        from toontown.battle.BattleCalculatorAI import BattleCalculatorAI
+
+        value = args[0]
+        if value < 0:
+            value = not BattleCalculatorAI.suitsAlwaysHit
+        BattleCalculatorAI.suitsAlwaysHit = 1 if value else 0
+        return "Suits always hit is %s." % ("on" if value else "off")
+
 class BldgTakeover(MagicWord):
     desc = "Flip a building on your street between toon and suit state."
     advancedDesc = "\"suit\" makes the toon building on the given block of your street zone a cog building of " \

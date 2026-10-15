@@ -5,6 +5,7 @@ from otp.otpbase import OTPLocalizer
 from toontown.toonbase import TTLocalizer
 notify = DirectNotifyGlobal.directNotify.newCategory('SuitBattleGlobals')
 debugAttackSequence = {}
+attackTypeOverride = None
 
 def pickFromFreqList(freqList):
     randNum = random.randint(0, 99)
@@ -72,7 +73,10 @@ def pickSuitAttack(attacks, suitLevel):
             break
         index = index + 1
 
-    configAttackName = simbase.config.GetString('attack-type', 'random')
+    if attackTypeOverride is not None:
+        configAttackName = attackTypeOverride
+    else:
+        configAttackName = simbase.config.GetString('attack-type', 'random')
     if configAttackName == 'random':
         return attackNum
     elif configAttackName == 'sequence':
@@ -87,6 +91,7 @@ def pickSuitAttack(attacks, suitLevel):
             if attacks[i][0] == configAttackName:
                 return i
 
+        notify.info('pickSuitAttack: no %s in the suit attack list, picking randomly' % configAttackName)
         return attackNum
     return
 
