@@ -1842,13 +1842,31 @@ class BossBattle(MagicWord):
                        'swatleft': ToontownGlobals.BossCogSwatLeft,
                        'swatright': ToontownGlobals.BossCogSwatRight,
                        'dizzy': ToontownGlobals.BossCogDizzyNow}
+            ceo = boss.dept == 'c'
+            if ceo:
+                attacks = {'golf': ToontownGlobals.BossCogGolfAttack,
+                           'golfarea': ToontownGlobals.BossCogGolfAreaAttack,
+                           'geardirected': ToontownGlobals.BossCogGearDirectedAttack,
+                           'directed': ToontownGlobals.BossCogDirectedAttack,
+                           'overtime': ToontownGlobals.BossCogOvertimeAttack,
+                           'move': ToontownGlobals.BossCogMoveAttack}
             code = attacks.get(type)
             if code is None:
                 return f"Unknown attack \"{type}\". Valid attacks: {', '.join(attacks)}."
-            if boss.getCurrentOrNextState() != 'BattleThree':
-                return "Attacks can only be forced in the BattleThree state."
+            requiredState = 'BattleFour' if ceo else 'BattleThree'
+            if boss.getCurrentOrNextState() != requiredState:
+                return f"Attacks can only be forced in the {requiredState} state."
+            if ceo and code in (ToontownGlobals.BossCogOvertimeAttack, ToontownGlobals.BossCogMoveAttack):
+                boss.stopAttacks()
+                if code == ToontownGlobals.BossCogMoveAttack:
+                    boss.doMoveAttack(target)
+                else:
+                    boss.b_setAttackCode(code, 1 if target else 0)
+                boss.stopAttacks()
+                return f"Boss attack: {type}."
             targetId = 0
-            if code == ToontownGlobals.BossCogDirectedAttack:
+            if code in (ToontownGlobals.BossCogDirectedAttack, ToontownGlobals.BossCogGolfAttack,
+                        ToontownGlobals.BossCogGearDirectedAttack):
                 targetId = target or invoker.doId
                 if targetId not in boss.involvedToons:
                     return f"Toon {targetId} is not in this boss battle."
