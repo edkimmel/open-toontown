@@ -1891,7 +1891,7 @@ class BossBattle(MagicWord):
             boss.b_setAttackCode(ToontownGlobals.BossCogDizzyNow)
             boss.b_setBossDamage(boss.bossMaxDamage, 0, 0)
             boss.stopAttacks()
-            boss.setState('NearVictory')
+            boss.b_setState('NearVictory')
             return "The boss is almost defeated!"
 
         # The create command is already described when the invoker is not in a battle.  These are the commands
