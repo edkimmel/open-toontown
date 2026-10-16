@@ -1704,6 +1704,7 @@ class BossBattle(MagicWord):
           - attack <area|directed|front|swatleft|swatright|dizzy> [start] [avId]: Forces one attack in
             BattleThree and stops the random schedule. directed targets avId (default: you), who must be
             in the battle.
+          - damage <n>: CJ only. Sets the boss damage in BattleThree; max damage goes to Victory.
           - near: Sellbot only. Deals max damage in BattleThree and goes to the NearVictory state.
         """
 
@@ -1894,9 +1895,27 @@ class BossBattle(MagicWord):
             boss.b_setState('NearVictory')
             return "The boss is almost defeated!"
 
+        elif command == "damage":
+            if boss.dept != 'l':
+                return "The damage command is only supported for CJ."
+            try:
+                amount = int(type) if type else start
+            except ValueError:
+                return "Damage amount not an integer!"
+            if amount < 0:
+                return "Damage amount must not be negative!"
+            if boss.getCurrentOrNextState() != 'BattleThree':
+                return "The boss must be in the BattleThree state."
+            amount = min(amount, boss.bossMaxDamage)
+            boss.b_setBossDamage(amount, 0, 0)
+            if amount >= boss.bossMaxDamage:
+                boss.b_setState('Victory')
+                return "The boss has been defeated!"
+            return f"Boss damage set to {amount}."
+
         # The create command is already described when the invoker is not in a battle.  These are the commands
         # they can use INSIDE the battle.
-        return f"Unknown command: \"{command}\". Valid commands: \"start\", \"stop\", \"skip\", \"final\", \"kill\", \"attack\", \"near\"."
+        return f"Unknown command: \"{command}\". Valid commands: \"start\", \"stop\", \"skip\", \"final\", \"kill\", \"attack\", \"damage\", \"near\"."
 
     def __destroyBoss(self, boss):
         bossZone = boss.zoneId
