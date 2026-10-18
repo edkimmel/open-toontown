@@ -2195,12 +2195,22 @@ class SuitReserves(MagicWord):
 
     def handleWord(self, invoker, avId, toon, *args):
         from toontown.building.SuitPlannerInteriorAI import SuitPlannerInteriorAI
+        from toontown.hood import ZoneUtil
 
         state = args[0].lower()
         if state not in ("on", "off"):
             return "Usage: ~suitreserves on|off"
         SuitPlannerInteriorAI.forceReserves = 4 if state == "on" else 0
-        return "Suit interior reserves are %s." % state
+        rebuilt = 0
+        mgr = self.air.buildingManagers.get(ZoneUtil.getBranchZone(toon.zoneId))
+        if mgr is not None:
+            for building in mgr.getBuildings():
+                if not building.isSuitBuilding():
+                    continue
+                zoneId, interiorZoneId = building.getExteriorAndInteriorZoneId()
+                building.planner = SuitPlannerInteriorAI(building.numFloors, building.difficulty, building.track, interiorZoneId)
+                rebuilt += 1
+        return "Suit interior reserves are %s (%d suit buildings replanned)." % (state, rebuilt)
 
 class BldgTakeover(MagicWord):
     desc = "Flip a building on your street between toon and suit state."
