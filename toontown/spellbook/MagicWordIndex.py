@@ -2204,7 +2204,8 @@ class SuitReserves(MagicWord):
         rebuilt = 0
         for mgr in self.air.buildingManagers.values():
             for building in mgr.getBuildings():
-                if not building.isSuitBuilding():
+                isSuit = getattr(building, "isSuitBuilding", None)
+                if isSuit is None or not isSuit():
                     continue
                 zoneId, interiorZoneId = building.getExteriorAndInteriorZoneId()
                 building.planner = SuitPlannerInteriorAI(building.numFloors, building.difficulty, building.track, interiorZoneId)
