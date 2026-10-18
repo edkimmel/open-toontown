@@ -2202,15 +2202,14 @@ class SuitReserves(MagicWord):
             return "Usage: ~suitreserves on|off"
         SuitPlannerInteriorAI.forceReserves = 4 if state == "on" else 0
         rebuilt = 0
-        mgr = self.air.buildingManagers.get(ZoneUtil.getBranchZone(toon.zoneId))
-        if mgr is not None:
+        for mgr in self.air.buildingManagers.values():
             for building in mgr.getBuildings():
                 if not building.isSuitBuilding():
                     continue
                 zoneId, interiorZoneId = building.getExteriorAndInteriorZoneId()
                 building.planner = SuitPlannerInteriorAI(building.numFloors, building.difficulty, building.track, interiorZoneId)
                 rebuilt += 1
-        return "Suit interior reserves are %s (%d suit buildings replanned)." % (state, rebuilt)
+        return "Suit interior reserves are %s (%d suit buildings replanned across all streets)." % (state, rebuilt)
 
 class BldgTakeover(MagicWord):
     desc = "Flip a building on your street between toon and suit state."
