@@ -2187,6 +2187,21 @@ class SuitsAlwaysHit(MagicWord):
         BattleCalculatorAI.suitsAlwaysHit = 1 if value else 0
         return "Suits always hit is %s." % ("on" if value else "off")
 
+class SuitReserves(MagicWord):
+    desc = "Make new suit building interiors start with several suits and reserves."
+    advancedDesc = "\"~suitreserves on\" makes every suit interior planned afterwards use 4 suits per floor and "                    "all of them active in the first round (prc 4-suits-per-floor, n-suits-1st-round), so a floor "                    "sends reserves mid-battle. \"off\" restores the random plan."
+    execLocation = MagicWordConfig.EXEC_LOC_SERVER
+    arguments = [("state", str, True)]
+
+    def handleWord(self, invoker, avId, toon, *args):
+        from toontown.building.SuitPlannerInteriorAI import SuitPlannerInteriorAI
+
+        state = args[0].lower()
+        if state not in ("on", "off"):
+            return "Usage: ~suitreserves on|off"
+        SuitPlannerInteriorAI.forceReserves = 4 if state == "on" else 0
+        return "Suit interior reserves are %s." % state
+
 class BldgTakeover(MagicWord):
     desc = "Flip a building on your street between toon and suit state."
     advancedDesc = "\"suit\" makes the toon building on the given block of your street zone a cog building of " \

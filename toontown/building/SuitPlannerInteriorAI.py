@@ -8,9 +8,11 @@ from toontown.building import SuitBuildingGlobals
 class SuitPlannerInteriorAI:
     notify = DirectNotifyGlobal.directNotify.newCategory('SuitPlannerInteriorAI')
 
+    forceReserves = 0
+
     def __init__(self, numFloors, bldgLevel, bldgTrack, zone, respectInvasions=1):
-        self.dbg_nSuits1stRound = config.GetBool('n-suits-1st-round', 0)
-        self.dbg_4SuitsPerFloor = config.GetBool('4-suits-per-floor', 0)
+        self.dbg_nSuits1stRound = config.GetBool('n-suits-1st-round', 0) or self.forceReserves
+        self.dbg_4SuitsPerFloor = config.GetBool('4-suits-per-floor', 0) or self.forceReserves
         self.dbg_1SuitPerFloor = config.GetBool('1-suit-per-floor', 0)
         self.zoneId = zone
         self.numFloors = numFloors
