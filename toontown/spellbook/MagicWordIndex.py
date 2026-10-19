@@ -2628,6 +2628,30 @@ class Tank(MagicWord):
         return "Set {}'s max fish tank to {}.".format(toon.getName(), maxTank)
 
 
+class EmoteAccess(MagicWord):
+    aliases = ["emotes"]
+    desc = "Grants emote access: all emotes, or only the given index (optionally set to 0 or 1)."
+    execLocation = MagicWordConfig.EXEC_LOC_SERVER
+    accessLevel = 'ADMIN'
+    arguments = [("index", int, False, -1), ("value", int, False, 1)]
+
+    def handleWord(self, invoker, avId, toon, *args):
+        index, value = args[0], args[1]
+        access = list(toon.emoteAccess)
+        if index == -1:
+            access = [1] * len(access)
+        elif 0 <= index < len(access):
+            if value not in (0, 1):
+                return "Specify a value of 0 or 1."
+            access[index] = value
+        else:
+            return "Specify an emote index between 0 and {}.".format(len(access) - 1)
+
+        toon.emoteAccess = access
+        toon.b_setEmoteAccess(toon.emoteAccess)
+        return "Set {}'s emote access to {}.".format(toon.getName(), access)
+
+
 class Befriend(MagicWord):
     """Dev-only seed for live tests which require reciprocal friendship."""
     desc = ("Creates a reciprocal friendship between the invoker and one "
