@@ -56,3 +56,7 @@ class ToontownUDRepository(ToontownInternalRepository):
                 OTP_DO_ID_AVATAR_FRIENDS_MANAGER, 'AvatarFriendsManager')
             self.playerFriendsManager = self.generateGlobalObject(
                 OTP_DO_ID_PLAYER_FRIENDS_MANAGER, 'TTPlayerFriendsManager')
+
+            # Create our code redemption manager...
+            self.codeRedemptionManager = self.generateGlobalObject(
+                OTP_DO_ID_TOONTOWN_CODE_REDEMPTION_MANAGER, 'TTCodeRedemptionMgr')
