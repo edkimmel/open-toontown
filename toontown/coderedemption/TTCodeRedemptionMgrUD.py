@@ -7,7 +7,7 @@ class TTCodeRedemptionMgrUD(DistributedObjectUD):
     notify = DirectNotifyGlobal.directNotify.newCategory('TTCodeRedemptionMgrUD')
 
     def redeemCode(self, context, code):
-        avId = self.air.getAvatarIdFromSender()
-        if not avId:
+        sender = self.air.getMsgSender()
+        if not self.air.getAvatarIdFromSender():
             return
-        self.sendUpdateToAvatarId(avId, 'redeemCodeResult', [context, CodeDoesntExist, 0])
+        self.sendUpdateToChannel(sender, 'redeemCodeResult', [context, CodeDoesntExist, 0])
