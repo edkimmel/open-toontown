@@ -2693,6 +2693,45 @@ class Bear(MagicWord):
         return "Changed {} into a bear.".format(toon.getName())
 
 
+class EarnedExperience(MagicWord):
+    aliases = ["earnedexp"]
+    desc = "Sends your toon's earned experience: the amount in one gag track, zero elsewhere."
+    execLocation = MagicWordConfig.EXEC_LOC_SERVER
+    accessLevel = 'ADMIN'
+    arguments = [("track", int, True), ("amount", int, True)]
+
+    def handleWord(self, invoker, avId, toon, *args):
+        from toontown.toonbase import ToontownBattleGlobals
+        track, amount = args
+        if not 0 <= track < len(ToontownBattleGlobals.Tracks):
+            return "Track must be between 0 and {}.".format(len(ToontownBattleGlobals.Tracks) - 1)
+        earnedExp = [0] * len(ToontownBattleGlobals.Tracks)
+        earnedExp[track] = max(0, min(amount, 65535))
+        toon.d_setEarnedExperience(earnedExp)
+        return "Sent earned experience {} to {}.".format(earnedExp, toon.getName())
+
+
+class Bingo(MagicWord):
+    desc = ("Starts a new Bingo game on the fishing pond in your zone, if it has a manager, "
+            "and makes your toon announce Bingo.")
+    execLocation = MagicWordConfig.EXEC_LOC_SERVER
+    accessLevel = 'ADMIN'
+
+    def handleWord(self, invoker, avId, toon, *args):
+        started = False
+        for obj in list(toon.air.doId2do.values()):
+            manager = getattr(obj, 'getBingoManager', None)
+            if manager is None or obj.zoneId != toon.zoneId:
+                continue
+            manager = manager()
+            if manager is not None:
+                manager.beginGame()
+                started = True
+        toon.d_announceBingo()
+        return "Bingo game {}; announced Bingo for {}.".format(
+            "started" if started else "not started (no pond bingo manager in this zone)", toon.getName())
+
+
 class Befriend(MagicWord):
     """Dev-only seed for live tests which require reciprocal friendship."""
     desc = ("Creates a reciprocal friendship between the invoker and one "
