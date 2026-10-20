@@ -2679,6 +2679,20 @@ class WishNameState(MagicWord):
         return "Set {}'s wish name state to {} ({!r}).".format(toon.getName(), state, name)
 
 
+class Bear(MagicWord):
+    desc = "Changes your toon's species to bear, keeping head size and colors."
+    execLocation = MagicWordConfig.EXEC_LOC_SERVER
+    accessLevel = 'ADMIN'
+
+    def handleWord(self, invoker, avId, toon, *args):
+        dna = toon.getStyle()
+        if dna.head[0] == 'b':
+            return "{} is already a bear.".format(toon.getName())
+        dna.head = 'b' + dna.head[1:]
+        toon.b_setDNAString(dna.makeNetString())
+        return "Changed {} into a bear.".format(toon.getName())
+
+
 class Befriend(MagicWord):
     """Dev-only seed for live tests which require reciprocal friendship."""
     desc = ("Creates a reciprocal friendship between the invoker and one "
