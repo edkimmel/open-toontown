@@ -622,10 +622,18 @@ class SetNameTypedOperation(AvatarOperation):
 
     def __handleJudgeName(self):
         status = 1  # TODO Make this useful
+        wishNameState = 'PENDING'
+        if config.GetBool('want-dev-name-judging', False):
+            lowered = (self.name or '').lower()
+            if 'badname' in lowered:
+                status = 0
+            elif 'goodname' in lowered:
+                status = 2
+                wishNameState = 'APPROVED'
         if self.avId and status:
             self.loginManager.air.dbInterface.updateObject(self.loginManager.air.dbId, self.avId,
                                                            self.loginManager.air.dclassesByName['DistributedToonUD'],
-                                                           {'WishNameState': ('PENDING',),
+                                                           {'WishNameState': (wishNameState,),
                                                             'WishName': (self.name,)})
 
         self.loginManager.sendUpdateToAccountId(self.sender, 'nameTypedResponse', [self.avId, status])

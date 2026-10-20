@@ -2652,6 +2652,33 @@ class EmoteAccess(MagicWord):
         return "Set {}'s emote access to {}.".format(toon.getName(), access)
 
 
+class WishNameState(MagicWord):
+    """Dev-only seed for live tests of the avatar chooser name branches."""
+    aliases = ["wishname"]
+    desc = ("Sets the pending-name state of the invoker's toon: approved, "
+            "rejected, pending, nameit (OPEN, toon may be named) or named "
+            "(LOCKED). Optional name is stored as WishName.")
+    execLocation = MagicWordConfig.EXEC_LOC_SERVER
+    accessLevel = 'ADMIN'
+    arguments = [("state", str, True), ("name", str, False, "")]
+
+    STATES = {'approved': 'APPROVED', 'rejected': 'REJECTED', 'pending': 'PENDING',
+              'nameit': 'OPEN', 'named': 'LOCKED'}
+
+    def handleWord(self, invoker, avId, toon, *args):
+        state = self.STATES.get(args[0].lower())
+        if state is None:
+            return "Specify one of: {}.".format(", ".join(sorted(self.STATES)))
+        name = args[1]
+        if not name and state in ('APPROVED', 'REJECTED', 'PENDING'):
+            name = toon.getName()
+        if state in ('OPEN', 'LOCKED'):
+            name = ''
+        toon.sendUpdate('WishName', [name])
+        toon.sendUpdate('WishNameState', [state])
+        return "Set {}'s wish name state to {} ({!r}).".format(toon.getName(), state, name)
+
+
 class Befriend(MagicWord):
     """Dev-only seed for live tests which require reciprocal friendship."""
     desc = ("Creates a reciprocal friendship between the invoker and one "
