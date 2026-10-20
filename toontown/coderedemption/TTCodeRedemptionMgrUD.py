@@ -1,9 +1,9 @@
 from direct.directnotify import DirectNotifyGlobal
-from direct.distributed.DistributedObjectUD import DistributedObjectUD
+from direct.distributed.DistributedObjectGlobalUD import DistributedObjectGlobalUD
 
 CodeDoesntExist = 1
 
-class TTCodeRedemptionMgrUD(DistributedObjectUD):
+class TTCodeRedemptionMgrUD(DistributedObjectGlobalUD):
     notify = DirectNotifyGlobal.directNotify.newCategory('TTCodeRedemptionMgrUD')
 
     def redeemCode(self, context, code):
