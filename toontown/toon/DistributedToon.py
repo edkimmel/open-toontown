@@ -359,7 +359,7 @@ class DistributedToon(DistributedPlayer.DistributedPlayer, Toon.Toon, Distribute
         localAvatar.sendUpdate('logSuspiciousEvent', ['%s for %s' % (msg, self.doId)])
 
     def setSCSinging(self, msgIndex):
-        self.sendUpdate('logSuspiciousEvent', ['invalid msgIndex in setSCSinging: %s from %s' % (msgIndex, self.doId)])
+        pass
 
     def d_reqSCResistance(self, msgIndex):
         messenger.send('wakeup')

@@ -3698,7 +3698,7 @@ class DistributedToonAI(DistributedPlayerAI.DistributedPlayerAI, DistributedSmoo
         eventStr = 'senderId=%s ' % senderId
         eventStr += eventName
         self.air.writeServerEvent('suspicious', self.doId, eventStr)
-        if simbase.config.GetBool('want-ban-setSCSinging', True):
+        if simbase.config.GetBool('want-ban-setSCSinging', False):
             if 'invalid msgIndex in setSCSinging:' in eventName:
                 if senderId == self.doId:
                     commentStr = 'Toon %s trying to call setSCSinging' % self.doId
