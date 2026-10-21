@@ -27,7 +27,6 @@ from toontown.fishing import FishTank
 from .NPCToons import npcFriends, isZoneProtected
 from toontown.coghq import CogDisguiseGlobals
 import random
-import re
 from toontown.chat import ResistanceChat
 from toontown.racing import RaceGlobals
 from toontown.hood import ZoneUtil
@@ -3698,9 +3697,6 @@ class DistributedToonAI(DistributedPlayerAI.DistributedPlayerAI, DistributedSmoo
         senderId = self.air.getAvatarIdFromSender()
         eventStr = 'senderId=%s ' % senderId
         eventStr += eventName
-        strSearch = re.compile('AvatarHackWarning! nodename')
-        if strSearch.search(eventName, 0, 100):
-            self.air.district.recordSuspiciousEventData(len(eventStr))
         self.air.writeServerEvent('suspicious', self.doId, eventStr)
         if simbase.config.GetBool('want-ban-setSCSinging', True):
             if 'invalid msgIndex in setSCSinging:' in eventName:
