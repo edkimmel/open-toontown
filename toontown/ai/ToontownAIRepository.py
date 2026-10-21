@@ -184,6 +184,7 @@ class ToontownAIRepository(ToontownInternalRepository):
         """
 
         self.banManager = BanManagerAI()
+        self.cogSuitMessageSent = False
 
         # Create our holiday manager...
         self.holidayManager = HolidayManagerAI(self)
