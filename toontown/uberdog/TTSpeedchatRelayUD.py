@@ -1,5 +1,5 @@
 from direct.directnotify import DirectNotifyGlobal
-from direct.distributed.DistributedObjectUD import DistributedObjectUD
+from direct.distributed.DistributedObjectGlobalUD import DistributedObjectGlobalUD
 
-class TTSpeedchatRelayUD(DistributedObjectUD):
+class TTSpeedchatRelayUD(DistributedObjectGlobalUD):
     notify = DirectNotifyGlobal.directNotify.newCategory('TTSpeedchatRelayUD')

@@ -1,5 +1,5 @@
 from direct.directnotify import DirectNotifyGlobal
-from direct.distributed.DistributedObjectUD import DistributedObjectUD
+from direct.distributed.DistributedObjectGlobalUD import DistributedObjectGlobalUD
 
-class DistributedDeliveryManagerUD(DistributedObjectUD):
+class DistributedDeliveryManagerUD(DistributedObjectGlobalUD):
     notify = DirectNotifyGlobal.directNotify.newCategory('DistributedDeliveryManagerUD')
