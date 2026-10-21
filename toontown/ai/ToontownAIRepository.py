@@ -3,6 +3,7 @@ from panda3d.core import *
 from panda3d.toontown import *
 
 from otp.ai.AIZoneData import AIZoneDataStore
+from otp.ai.BanManagerAI import BanManagerAI
 from otp.ai.TimeManagerAI import TimeManagerAI
 from otp.distributed.OtpDoGlobals import *
 from toontown.ai.HolidayManagerAI import HolidayManagerAI
@@ -181,6 +182,8 @@ class ToontownAIRepository(ToontownInternalRepository):
         """
         Creates "local" (non-distributed) objects.
         """
+
+        self.banManager = BanManagerAI()
 
         # Create our holiday manager...
         self.holidayManager = HolidayManagerAI(self)
