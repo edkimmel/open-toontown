@@ -2185,7 +2185,26 @@ class SuitsAlwaysHit(MagicWord):
         if value < 0:
             value = not BattleCalculatorAI.suitsAlwaysHit
         BattleCalculatorAI.suitsAlwaysHit = 1 if value else 0
+        if value:
+            BattleCalculatorAI.suitsAlwaysMiss = 0
         return "Suits always hit is %s." % ("on" if value else "off")
+
+class SuitsAlwaysMiss(MagicWord):
+    desc = "Make every cog attack miss (or restore normal accuracy)."
+    advancedDesc = "Toggles BattleCalculatorAI.suitsAlwaysMiss (prc suits-always-miss) at runtime for all battles "                    "on this AI. \"1\" forces misses, \"0\" restores the accuracy roll, no argument flips the current value. "                    "Enabling it turns off suitsalwayshit, which would otherwise take precedence."
+    execLocation = MagicWordConfig.EXEC_LOC_SERVER
+    arguments = [("enabled", int, False, -1)]
+
+    def handleWord(self, invoker, avId, toon, *args):
+        from toontown.battle.BattleCalculatorAI import BattleCalculatorAI
+
+        value = args[0]
+        if value < 0:
+            value = not BattleCalculatorAI.suitsAlwaysMiss
+        BattleCalculatorAI.suitsAlwaysMiss = 1 if value else 0
+        if value:
+            BattleCalculatorAI.suitsAlwaysHit = 0
+        return "Suits always miss is %s." % ("on" if value else "off")
 
 class SuitReserves(MagicWord):
     desc = "Make new suit building interiors start with several suits and reserves."
