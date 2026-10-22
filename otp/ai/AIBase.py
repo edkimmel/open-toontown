@@ -157,9 +157,15 @@ class AIBase:
         self.graphicsEngine.renderFrame()
         return Task.cont
 
+    def __garbageCollectStates(self, state):
+        TransformState.garbageCollect()
+        RenderState.garbageCollect()
+        return Task.cont
+
     def shutdown(self):
         self.taskMgr.remove('ivalLoop')
         self.taskMgr.remove('igLoop')
+        self.taskMgr.remove('garbageCollectStates')
         self.taskMgr.remove('aiSleep')
         self.eventMgr.shutdown()
 
@@ -168,6 +174,8 @@ class AIBase:
         self.taskMgr.add(self.__resetPrevTransform, 'resetPrevTransform', priority=-51)
         self.taskMgr.add(self.__ivalLoop, 'ivalLoop', priority=20)
         self.taskMgr.add(self.__igLoop, 'igLoop', priority=50)
+        if self.config.GetBool('garbage-collect-states', 1):
+            self.taskMgr.add(self.__garbageCollectStates, 'garbageCollectStates', priority=46)
         if self.AISleep >= 0 and (not self.AIRunningNetYield or self.AIForceSleep):
             self.taskMgr.add(self.__sleepCycleTask, 'aiSleep', priority=55)
         self.eventMgr.restart()
