@@ -50,13 +50,24 @@ class FriendManagerAI(DistributedObjectAI):
     RESPONSE_YES = 1
     RESPONSE_OTHER_TOO_MANY = 3
 
+    # The client puts no timeout on friendQuery, so the AI closes an
+    # unanswered invite itself.
+    INVITE_TIMEOUT = 60.0
+    MAX_PENDING_INVITES = 3
+
     def __init__(self, air):
         DistributedObjectAI.__init__(self, air)
-        # context -> (inviterId, inviteeId).  The reference client puts no
-        # timeout on friendQuery, so a context lives until it is answered,
-        # cancelled, or one of the two toons leaves the shard.
+        # context -> (inviterId, inviteeId).  A context lives until it is
+        # answered, cancelled, times out, or one of the two toons leaves.
         self.invites = {}
+        # Contexts whose invitee has raised the invitation dialog.
+        self.asking = set()
         self.nextContext = 1
+
+    def delete(self):
+        for context in list(self.invites):
+            self._dropInvite(context)
+        DistributedObjectAI.delete(self)
 
     def _allocateContext(self):
         context = self.nextContext
@@ -83,6 +94,43 @@ class FriendManagerAI(DistributedObjectAI):
 
     def _sendResponse(self, avId, code, context):
         self.sendUpdateToAvatarId(avId, 'friendResponse', [code, context])
+
+    def _inviteTaskName(self, context):
+        return self.uniqueName('friendInvite-%s' % context)
+
+    def _addInvite(self, context, inviterId, inviteeId):
+        self.invites[context] = (inviterId, inviteeId)
+        taskMgr.doMethodLater(self.INVITE_TIMEOUT, self._expireInvite,
+                              self._inviteTaskName(context), extraArgs=[context])
+        for avId in (inviterId, inviteeId):
+            self.accept(self.air.getAvatarExitEvent(avId), self.forgetAvatar, [avId])
+
+    def _dropInvite(self, context):
+        invite = self.invites.pop(context, None)
+        self.asking.discard(context)
+        taskMgr.remove(self._inviteTaskName(context))
+        if invite is None:
+            return
+
+        for avId in invite:
+            if not any(avId in pair for pair in self.invites.values()):
+                self.ignore(self.air.getAvatarExitEvent(avId))
+
+    def _expireInvite(self, context):
+        invite = self.invites.get(context)
+        if invite is None:
+            return
+
+        inviterId, inviteeId = invite
+        asking = context in self.asking
+        self._dropInvite(context)
+        if asking:
+            # Tears down the invitee's dialog (FriendInvitee.py:46); its
+            # inviteeAcknowledgeCancel then finds no context.
+            self.sendUpdateToAvatarId(inviteeId, 'inviteeCancelFriendQuery', [context])
+            self._sendResponse(inviterId, self.RESPONSE_NO, context)
+        else:
+            self._sendConsidering(inviterId, self.CONSIDERING_NOT_AVAILABLE, context)
 
     # client -> AI (airecv clsend, etc/otp.dc:309-313)
     def friendQuery(self, inviteeId):
@@ -114,7 +162,13 @@ class FriendManagerAI(DistributedObjectAI):
             self._sendConsidering(inviterId, self.CONSIDERING_OTHER_TOO_MANY, context)
             return
 
-        self.invites[context] = (inviterId, inviteeId)
+        pending = [pair for pair in self.invites.values() if pair[0] == inviterId]
+        if (inviterId, inviteeId) in pending or len(pending) >= self.MAX_PENDING_INVITES:
+            # The same answer a busy invitee gives (FriendManager.py:79-80).
+            self._sendConsidering(inviterId, self.CONSIDERING_NOT_AVAILABLE, context)
+            return
+
+        self._addInvite(context, inviterId, inviteeId)
         # inviteeFriendQuery(int32 inviterId, string inviterName,
         # blob inviterDna, int32 context) -- etc/otp.dc:316, handled at
         # FriendManager.py:77-93.
@@ -147,9 +201,11 @@ class FriendManagerAI(DistributedObjectAI):
             yesNo = self.CONSIDERING_NOT_AVAILABLE
 
         self._sendConsidering(inviterId, yesNo, context)
-        if yesNo != self.CONSIDERING_ASKING:
+        if yesNo == self.CONSIDERING_ASKING:
+            self.asking.add(context)
+        else:
             # No dialog was raised on the invitee, so no response is coming.
-            del self.invites[context]
+            self._dropInvite(context)
 
     def inviteeFriendResponse(self, yesNoMaybe, context):
         """`FriendManager.up_inviteeFriendResponse`, sent by
@@ -165,7 +221,7 @@ class FriendManagerAI(DistributedObjectAI):
             self.notify.warning('inviteeFriendResponse from %s, not invitee %s' % (senderId, inviteeId))
             return
 
-        del self.invites[context]
+        self._dropInvite(context)
 
         if yesNoMaybe == self.RESPONSE_YES:
             if self.makeFriends(inviterId, inviteeId):
@@ -219,7 +275,7 @@ class FriendManagerAI(DistributedObjectAI):
             self.notify.warning('inviteeAcknowledgeCancel from %s, not invitee %s' % (senderId, inviteeId))
             return
 
-        del self.invites[context]
+        self._dropInvite(context)
 
     def makeFriends(self, avId, otherId, friendCode=0):
         """Two-way friendship between two toons that are both on this AI.
@@ -266,7 +322,7 @@ class FriendManagerAI(DistributedObjectAI):
     def forgetAvatar(self, avId):
         """Drop any pending invite that mentions an avatar that has left."""
         for context in [c for c, pair in self.invites.items() if avId in pair]:
-            del self.invites[context]
+            self._dropInvite(context)
 
     # The friends-list fetch (`getFriendsListRequest` /
     # `getFriendsListResponse`, `etc/otp.dc`).  This is what the client needs
