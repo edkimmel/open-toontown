@@ -38,6 +38,14 @@ class ToontownUDRepository(ToontownInternalRepository):
 
         self.notify.info('UberDOG server is ready.')
 
+    def handleDatagram(self, di):
+        if self.getMsgType() == OTP_AVATAR_DISCONNECTED:
+            if self.avatarFriendsManager is not None:
+                self.avatarFriendsManager.avatarWentOffline(di.getUint32())
+            return
+
+        ToontownInternalRepository.handleDatagram(self, di)
+
     def createLocals(self):
         # Create our Toontown time manager...
         self.toontownTimeManager = ToontownTimeManager(serverTimeUponLogin=int(time.time()),

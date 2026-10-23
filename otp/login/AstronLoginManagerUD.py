@@ -17,6 +17,7 @@ from direct.distributed.MsgTypes import (
     STATESERVER_OBJECT_DELETE_RAM
 )
 
+from otp.distributed.OtpDoGlobals import OTP_AVATAR_DISCONNECTED
 from otp.otpbase import OTPGlobals
 
 from toontown.makeatoon.NameGenerator import NameGenerator
@@ -778,6 +779,17 @@ class LoadAvatarOperation(AvatarOperation):
         datagram.addServerHeader(channel, self.loginManager.air.ourChannel, CLIENTAGENT_ADD_POST_REMOVE)
         datagram.addUint16(cleanupDatagram.getLength())
         datagram.appendData(cleanupDatagram.getMessage())
+        self.loginManager.air.send(datagram)
+
+        # The client agent also tells us when the connection drops, so the
+        # friends UD can mark the avatar offline.
+        disconnectDatagram = PyDatagram()
+        disconnectDatagram.addServerHeader(self.loginManager.air.ourChannel, channel, OTP_AVATAR_DISCONNECTED)
+        disconnectDatagram.addUint32(self.avId)
+        datagram = PyDatagram()
+        datagram.addServerHeader(channel, self.loginManager.air.ourChannel, CLIENTAGENT_ADD_POST_REMOVE)
+        datagram.addUint16(disconnectDatagram.getLength())
+        datagram.appendData(disconnectDatagram.getMessage())
         self.loginManager.air.send(datagram)
 
         # Get the avatar's "true" access (that is, the integer value that corresponds to the assigned string value).

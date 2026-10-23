@@ -92,3 +92,7 @@ OTP_NET_MESSENGER_CHANNEL = (OTP_DO_ID_UBER_DOG << 32) + OTP_ZONE_ID_MANAGEMENT
 # Astron's MsgTypes table omits these; the uberdog sends them to the client.
 CLIENT_FRIEND_ONLINE = 53
 CLIENT_FRIEND_OFFLINE = 54
+
+# Sent to the uberdog's own channel by the client agent when an avatar's
+# connection drops (CLIENTAGENT_ADD_POST_REMOVE); the body is the avId.
+OTP_AVATAR_DISCONNECTED = 4100
