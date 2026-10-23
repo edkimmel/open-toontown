@@ -1924,7 +1924,7 @@ class LocalToon(DistributedToon.DistributedToon, LocalAvatar.LocalAvatar):
                  zoneId,
                  sendToId])
             else:
-                self.sendUpdate('teleportResponse', [avId,
+                self.sendTeleportUpdate('teleportResponse', [avId,
                  available,
                  shardId,
                  hoodId,

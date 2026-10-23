@@ -3,6 +3,7 @@ import random
 from direct.directnotify import DirectNotifyGlobal
 from direct.distributed.DistributedObjectAI import DistributedObjectAI
 
+from otp.distributed.OtpDoGlobals import OTP_DO_ID_AVATAR_FRIENDS_MANAGER
 from otp.otpbase import OTPGlobals
 from toontown.pets import PetMood, PetTraits, PetTricks
 
@@ -324,7 +325,14 @@ class FriendManagerAI(DistributedObjectAI):
         other.extendFriendsList(avId, friendCode)
         toon.b_setFriendsList(toon.getFriendsList())
         other.b_setFriendsList(other.getFriendsList())
+        self._friendshipMade(avId, otherId)
         return True
+
+    def _friendshipMade(self, avId, otherId):
+        field = self.air.dclassesByName['AvatarFriendsManager'].getFieldByName('friendshipMade')
+        self.air.send(field.aiFormatUpdate(OTP_DO_ID_AVATAR_FRIENDS_MANAGER,
+                                           OTP_DO_ID_AVATAR_FRIENDS_MANAGER,
+                                           self.air.ourChannel, [avId, otherId]))
 
     def removeFriends(self, avId, otherId):
         """Inverse of makeFriends: drop each toon from the other's list."""

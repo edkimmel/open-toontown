@@ -493,6 +493,13 @@ dclass AvatarFriendsManager : DistributedObject {
   updateAvatarName(uint32, string);
   avatarOnline(uint32, uint32, string, bool, bool, string, string);
   avatarOffline(uint32);
+  routeTeleportQuery(uint32) airecv clsend;
+  teleportQuery(uint32);
+  routeTeleportResponse(uint32, int8, uint32, uint32, uint32) airecv clsend;
+  teleportResponse(uint32, int8, uint32, uint32, uint32);
+  routeTeleportGiveup(uint32) airecv clsend;
+  teleportGiveup(uint32);
+  friendshipMade(uint32, uint32) airecv;
 };
 
 dclass PlayerFriendsManager : DistributedObject, TalkPath_account {

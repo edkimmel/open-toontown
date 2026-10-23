@@ -88,6 +88,15 @@ class AvatarFriendsManager(DistributedObjectGlobal):
         messenger.send(OTPGlobals.AvatarFriendRemoveEvent, [avId])
         return
 
+    def teleportQuery(self, fromId):
+        base.localAvatar.teleportQuery(fromId)
+
+    def teleportResponse(self, fromId, available, shardId, hoodId, zoneId):
+        base.localAvatar.teleportResponse(fromId, available, shardId, hoodId, zoneId)
+
+    def teleportGiveup(self, fromId):
+        base.localAvatar.teleportGiveup(fromId)
+
     def setFriends(self, avatarIds):
         self.notify.debugCall()
 

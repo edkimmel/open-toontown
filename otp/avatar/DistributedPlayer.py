@@ -320,9 +320,16 @@ class DistributedPlayer(DistributedAvatar.DistributedAvatar, PlayerBase.PlayerBa
                 self.setSystemMessage(avId, OTPLocalizer.WhisperNowSpecialFriend % avatar.getName())
         return
 
+    def sendTeleportUpdate(self, fieldName, args, sendToId):
+        if sendToId is not None and sendToId not in base.cr.doId2do:
+            routeField = 'route' + fieldName[0].upper() + fieldName[1:]
+            base.cr.avatarFriendsManager.sendUpdate(routeField, [sendToId] + list(args[1:]))
+            return
+        self.sendUpdate(fieldName, args, sendToId)
+
     def d_teleportQuery(self, requesterId, sendToId = None):
         teleportNotify.debug('sending teleportQuery%s' % ((requesterId, sendToId),))
-        self.sendUpdate('teleportQuery', [requesterId], sendToId)
+        self.sendTeleportUpdate('teleportQuery', [requesterId], sendToId)
 
     def teleportQuery(self, requesterId):
         teleportNotify.debug('receieved teleportQuery(%s)' % requesterId)
@@ -376,7 +383,7 @@ class DistributedPlayer(DistributedAvatar.DistributedAvatar, PlayerBase.PlayerBa
           hoodId,
           zoneId,
           sendToId),))
-        self.sendUpdate('teleportResponse', [avId,
+        self.sendTeleportUpdate('teleportResponse', [avId,
          available,
          shardId,
          hoodId,
@@ -396,7 +403,7 @@ class DistributedPlayer(DistributedAvatar.DistributedAvatar, PlayerBase.PlayerBa
 
     def d_teleportGiveup(self, requesterId, sendToId = None):
         teleportNotify.debug('sending teleportGiveup(%s) to %s' % (requesterId, sendToId))
-        self.sendUpdate('teleportGiveup', [requesterId], sendToId)
+        self.sendTeleportUpdate('teleportGiveup', [requesterId], sendToId)
 
     def teleportGiveup(self, requesterId):
         teleportNotify.debug('received teleportGiveup(%s)' % (requesterId,))

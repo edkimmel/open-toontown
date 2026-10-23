@@ -18,9 +18,15 @@ class AvatarFriendsManagerUD(DistributedObjectUD):
     `handleFriendOffline` consume, wrapped in CLIENTAGENT_SEND_DATAGRAM to
     the friend's account channel -- Astron's client agent never sends them.
 
-    Known gap: the friend list is read from the database when the avatar
-    comes online, so a friendship formed mid-session is not reflected until
-    the next login.
+    Goto/teleport to a friend the sender cannot see cannot be sent
+    straight to that toon's DO (Astron ejects a client that updates an object
+    it has no interest in), so `routeTeleportQuery` / `routeTeleportResponse`
+    / `routeTeleportGiveup` (`etc/otp.dc`, airecv clsend) relay the matching
+    client field -- `teleportQuery` / `teleportResponse` / `teleportGiveup`,
+    with the sender's avId as `fromId` -- to the target's account channel,
+    only between online, reciprocal friends.  The friend list is read from
+    the database when the avatar comes online and kept current by
+    `friendshipMade`, which `FriendManagerAI.makeFriends` sends.
     """
 
     notify = DirectNotifyGlobal.directNotify.newCategory('AvatarFriendsManagerUD')
@@ -66,6 +72,16 @@ class AvatarFriendsManagerUD(DistributedObjectUD):
         datagram.appendData(inner.getMessage())
         self.air.send(datagram)
 
+    def friendshipMade(self, avIdA, avIdB):
+        for avId, otherId in ((avIdA, avIdB), (avIdB, avIdA)):
+            if avId in self.onlineAvatars:
+                friends = self.friendIds.setdefault(avId, [])
+                if otherId not in friends:
+                    friends.append(otherId)
+        if avIdA in self.onlineAvatars and avIdB in self.onlineAvatars:
+            self._sendPresence(avIdA, CLIENT_FRIEND_ONLINE, avIdB)
+            self._sendPresence(avIdB, CLIENT_FRIEND_ONLINE, avIdA)
+
     def avatarWentOffline(self, avId):
         if avId in self.onlineAvatars:
             for friendId in self.friendIds.pop(avId, []):
@@ -82,6 +98,35 @@ class AvatarFriendsManagerUD(DistributedObjectUD):
 
     def getAvatarChannel(self, avId):
         return self.onlineAvatars.get(avId, 0)
+
+    def _canRelay(self, fromId, toId):
+        return (fromId and fromId != toId
+                and fromId in self.onlineAvatars and toId in self.onlineAvatars
+                and toId in self.friendIds.get(fromId, ())
+                and fromId in self.friendIds.get(toId, ()))
+
+    def routeTeleportQuery(self, toId):
+        fromId = self.air.getAvatarIdFromSender()
+        if self._canRelay(fromId, toId):
+            self.sendUpdateToChannel(self.onlineAvatars[toId], 'teleportQuery', [fromId])
+        elif fromId in self.onlineAvatars:
+            self.notify.debug('routeTeleportQuery(%s) from %s refused' % (toId, fromId))
+            self.sendUpdateToChannel(self.onlineAvatars[fromId], 'teleportResponse', [toId, 0, 0, 0, 0])
+
+    def routeTeleportResponse(self, toId, available, shardId, hoodId, zoneId):
+        fromId = self.air.getAvatarIdFromSender()
+        if self._canRelay(fromId, toId):
+            self.sendUpdateToChannel(self.onlineAvatars[toId], 'teleportResponse',
+                                     [fromId, available, shardId, hoodId, zoneId])
+        else:
+            self.notify.debug('routeTeleportResponse(%s) from %s refused' % (toId, fromId))
+
+    def routeTeleportGiveup(self, toId):
+        fromId = self.air.getAvatarIdFromSender()
+        if self._canRelay(fromId, toId):
+            self.sendUpdateToChannel(self.onlineAvatars[toId], 'teleportGiveup', [fromId])
+        else:
+            self.notify.debug('routeTeleportGiveup(%s) from %s refused' % (toId, fromId))
 
     # client -> UD (airecv clsend).  Logged, not implemented: reached only
     # with base.friendMode == 1 (toontown/friends/FriendInviter.py,
