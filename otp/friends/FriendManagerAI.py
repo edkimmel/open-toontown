@@ -421,14 +421,26 @@ class FriendManagerAI(DistributedObjectAI):
     def getFriendsListRequest(self):
         avId = self.air.getAvatarIdFromSender()
         av = self._getToon(avId)
-        if av is None:
-            self.notify.warning('getFriendsListRequest from unknown avatar %s' % avId)
-            self._sendFriendsList(avId, 1, [])
+        if av is not None:
+            self._fetchFriendDetails(avId, self._friendsList(av))
             return
 
+        # The client asks at login, possibly before this AI has generated
+        # its avatar, so the list comes from the database row.
+        def gotRequester(dclass, fields):
+            if not fields or dclass != self.air.dclassesByName['DistributedToonAI']:
+                self.notify.warning('getFriendsListRequest from unknown avatar %s' % avId)
+                self._sendFriendsList(avId, 1, [])
+                return
+
+            self._fetchFriendDetails(avId, fields.get('setFriendsList', ([],))[0] or [])
+
+        self.air.dbInterface.queryObject(self.air.dbId, avId, gotRequester)
+
+    def _fetchFriendDetails(self, avId, friendsList):
         details = []
         offline = []
-        for pair in self._friendsList(av):
+        for pair in friendsList:
             friend = self._getToon(pair[0])
             if friend is None:
                 offline.append(pair[0])
@@ -449,7 +461,7 @@ class FriendManagerAI(DistributedObjectAI):
 
             def gotFriend(dclass, fields):
                 remaining[0] -= 1
-                if fields and dclass == self.air.dclassesByName['DistributedToonUD']:
+                if fields and dclass == self.air.dclassesByName['DistributedToonAI']:
                     details.append([friendId,
                                     fields['setName'][0],
                                     fields['setDNAString'][0],
