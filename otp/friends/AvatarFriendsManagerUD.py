@@ -1,10 +1,10 @@
 from direct.directnotify import DirectNotifyGlobal
-from direct.distributed.DistributedObjectUD import DistributedObjectUD
+from direct.distributed.DistributedObjectGlobalUD import DistributedObjectGlobalUD
 from direct.distributed.MsgTypes import CLIENTAGENT_SEND_DATAGRAM
 from direct.distributed.PyDatagram import PyDatagram
 from otp.distributed.OtpDoGlobals import CLIENT_FRIEND_OFFLINE, CLIENT_FRIEND_ONLINE
 
-class AvatarFriendsManagerUD(DistributedObjectUD):
+class AvatarFriendsManagerUD(DistributedObjectGlobalUD):
     """Server half of `otp/friends/AvatarFriendsManager.py` (uberdog 4686,
     `astron/config/astrond.yml:18-20`).  Tracks avatar presence and logs the
     three `airecv clsend` fields (`etc/otp.dc:450,451,455`); the actual
@@ -32,7 +32,7 @@ class AvatarFriendsManagerUD(DistributedObjectUD):
     notify = DirectNotifyGlobal.directNotify.newCategory('AvatarFriendsManagerUD')
 
     def __init__(self, air):
-        DistributedObjectUD.__init__(self, air)
+        DistributedObjectGlobalUD.__init__(self, air)
         # avId -> the account connection channel that avatar is riding on.
         self.onlineAvatars = {}
         # avId -> friend doIds read when that avatar came online.
