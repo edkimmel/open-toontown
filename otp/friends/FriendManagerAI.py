@@ -1,3 +1,5 @@
+import random
+
 from direct.directnotify import DirectNotifyGlobal
 from direct.distributed.DistributedObjectAI import DistributedObjectAI
 
@@ -29,8 +31,9 @@ class FriendManagerAI(DistributedObjectAI):
     inviter's table at all and must be translated, or the inviter falls
     into `maybe`.
 
-    `requestSecret` / `submitSecret` (`etc/otp.dc:318-321`) are not
-    implemented here.
+    `requestSecret` / `submitSecret` (`etc/otp.dc:348-351`) hand out and
+    redeem single-use friend secrets; the reply codes are the client's
+    (`otp/friends/FriendSecret.py:408-421,463-504`).
     """
 
     notify = DirectNotifyGlobal.directNotify.newCategory('FriendManagerAI')
@@ -55,8 +58,25 @@ class FriendManagerAI(DistributedObjectAI):
     INVITE_TIMEOUT = 60.0
     MAX_PENDING_INVITES = 3
 
+    # requestSecretResponse results (FriendSecret.py:409-421)
+    SECRET_OK = 1
+    SECRET_TOO_MANY = 0
+
+    # submitSecretResponse results (FriendSecret.py:463-504)
+    SUBMIT_UNKNOWN = 0
+    SUBMIT_OK = 1
+    SUBMIT_FULL = 2
+    SUBMIT_SELF = 3
+
+    SECRET_ALPHABET = '23456789abcdefghjkmnpqrstuvwxyz'
+    SECRET_LENGTH = 6
+    SECRET_LIFETIME = 48 * 60 * 60.0
+    MAX_SECRETS_PER_AVATAR = 5
+
     def __init__(self, air):
         DistributedObjectAI.__init__(self, air)
+        # secret -> ownerId
+        self.secrets = {}
         # context -> (inviterId, inviteeId).  A context lives until it is
         # answered, cancelled, times out, or one of the two toons leaves.
         self.invites = {}
@@ -65,6 +85,8 @@ class FriendManagerAI(DistributedObjectAI):
         self.nextContext = 1
 
     def delete(self):
+        for secret in list(self.secrets):
+            self._dropSecret(secret)
         for context in list(self.invites):
             self._dropInvite(context)
         DistributedObjectAI.delete(self)
@@ -113,7 +135,7 @@ class FriendManagerAI(DistributedObjectAI):
             return
 
         for avId in invite:
-            if not any(avId in pair for pair in self.invites.values()):
+            if not any(avId in pair for pair in self.invites.values()) and avId not in self.secrets.values():
                 self.ignore(self.air.getAvatarExitEvent(avId))
 
     def _expireInvite(self, context):
@@ -319,8 +341,67 @@ class FriendManagerAI(DistributedObjectAI):
         other.b_setFriendsList([pair for pair in self._friendsList(other) if pair[0] != avId])
         return True
 
+    def _secretTaskName(self, secret):
+        return self.uniqueName('friendSecret-%s' % secret)
+
+    def _dropSecret(self, secret):
+        if self.secrets.pop(secret, None) is not None:
+            taskMgr.remove(self._secretTaskName(secret))
+
+    def _expireSecret(self, secret):
+        self.secrets.pop(secret, None)
+
+    def _newSecret(self):
+        while True:
+            secret = ''.join(random.choice(self.SECRET_ALPHABET)
+                             for _ in range(self.SECRET_LENGTH))
+            if secret not in self.secrets:
+                return secret
+
+    def requestSecret(self):
+        """`FriendManager.up_requestSecret`, sent from
+        `FriendSecret.__getSecret`."""
+        avId = self.air.getAvatarIdFromSender()
+        if self._getToon(avId) is None:
+            self.notify.warning('requestSecret from unknown avatar %s' % avId)
+            return
+
+        if list(self.secrets.values()).count(avId) >= self.MAX_SECRETS_PER_AVATAR:
+            self.sendUpdateToAvatarId(avId, 'requestSecretResponse', [self.SECRET_TOO_MANY, ''])
+            return
+
+        secret = self._newSecret()
+        self.secrets[secret] = avId
+        taskMgr.doMethodLater(self.SECRET_LIFETIME, self._expireSecret,
+                              self._secretTaskName(secret), extraArgs=[secret])
+        self.accept(self.air.getAvatarExitEvent(avId), self.forgetAvatar, [avId])
+        self.sendUpdateToAvatarId(avId, 'requestSecretResponse', [self.SECRET_OK, secret])
+
+    def submitSecret(self, secret):
+        """`FriendManager.up_submitSecret`, sent from
+        `FriendSecret.__enterSecret`."""
+        avId = self.air.getAvatarIdFromSender()
+        secret = secret.strip().lower()
+        ownerId = self.secrets.get(secret)
+        if ownerId is None or self._getToon(ownerId) is None or self._getToon(avId) is None:
+            self.sendUpdateToAvatarId(avId, 'submitSecretResponse', [self.SUBMIT_UNKNOWN, 0])
+            return
+
+        if ownerId == avId:
+            self.sendUpdateToAvatarId(avId, 'submitSecretResponse', [self.SUBMIT_SELF, 0])
+            return
+
+        if not self.makeFriends(avId, ownerId):
+            self.sendUpdateToAvatarId(avId, 'submitSecretResponse', [self.SUBMIT_FULL, ownerId])
+            return
+
+        self._dropSecret(secret)
+        self.sendUpdateToAvatarId(avId, 'submitSecretResponse', [self.SUBMIT_OK, ownerId])
+
     def forgetAvatar(self, avId):
-        """Drop any pending invite that mentions an avatar that has left."""
+        """Drop any pending invite or secret that mentions an avatar that has left."""
+        for secret in [s for s, owner in self.secrets.items() if owner == avId]:
+            self._dropSecret(secret)
         for context in [c for c, pair in self.invites.items() if avId in pair]:
             self._dropInvite(context)
 
