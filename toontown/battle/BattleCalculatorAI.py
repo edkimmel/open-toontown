@@ -506,14 +506,12 @@ class BattleCalculatorAI:
                     if suit:
                         costToFire = 1
                         abilityToFire = toon.getPinkSlips()
-                        toon.removePinkSlips(costToFire)
                         if costToFire > abilityToFire:
                             commentStr = 'Toon attempting to fire a %s cost cog with %s pinkslips' % (costToFire, abilityToFire)
                             simbase.air.writeServerEvent('suspicious', toonId, commentStr)
-                            dislId = toon.DISLid
-                            simbase.air.banManager.ban(toonId, dislId, commentStr)
-                            print('Not enough PinkSlips to fire cog - print a warning here')
+                            attackDamage = 0
                         else:
+                            toon.removePinkSlips(costToFire)
                             suit.skeleRevives = 0
                             attackDamage = suit.getHP()
                     else:

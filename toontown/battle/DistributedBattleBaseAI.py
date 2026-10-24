@@ -961,8 +961,9 @@ class DistributedBattleBaseAI(DistributedObjectAI.DistributedObjectAI, BattleBas
         if self.__allPendingActiveToonsResponded():
             self.__movieDone()
         else:
+            remaining = self.timer.getT()
             self.timer.stop()
-            self.timer.startCallback(TIMEOUT_PER_USER, self.__serverMovieDone)
+            self.timer.startCallback(max(TIMEOUT_PER_USER, remaining), self.__serverMovieDone)
 
     def rewardDone(self):
         toonId = self.air.getAvatarIdFromSender()
@@ -984,8 +985,9 @@ class DistributedBattleBaseAI(DistributedObjectAI.DistributedObjectAI, BattleBas
         if self.__allActiveToonsResponded():
             self.handleRewardDone()
         else:
+            remaining = self.timer.getT()
             self.timer.stop()
-            self.timer.startCallback(TIMEOUT_PER_USER, self.serverRewardDone)
+            self.timer.startCallback(max(TIMEOUT_PER_USER, remaining), self.serverRewardDone)
 
     def assignRewards(self):
         if self.rewardHasPlayed == 1:
@@ -1072,6 +1074,13 @@ class DistributedBattleBaseAI(DistributedObjectAI.DistributedObjectAI, BattleBas
         elif track == PASS:
             self.toonAttacks[toonId] = getToonAttack(toonId, track=PASS)
         elif track == FIRE:
+            toon = self.getToon(toonId)
+            if toon == None:
+                return
+            if not self.validate(toonId, toon.getPinkSlips() >= 1, 'requestAttack: FIRE with no pink slips'):
+                return
+            if not self.validate(toonId, self.findSuit(av) in self.activeSuits, 'requestAttack: FIRE at non-active suit %s' % av):
+                return
             self.toonAttacks[toonId] = getToonAttack(toonId, track=FIRE, target=av)
         else:
             if not self.validate(toonId, track >= 0 and track <= MAX_TRACK_INDEX, 'requestAttack: invalid track %s' % track):
