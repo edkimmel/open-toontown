@@ -2206,6 +2206,34 @@ class SuitsAlwaysMiss(MagicWord):
             BattleCalculatorAI.suitsAlwaysHit = 0
         return "Suits always miss is %s." % ("on" if value else "off")
 
+class SuitTarget(MagicWord):
+    desc = "Pin which toon index every cog attack targets, or return to random."
+    advancedDesc = "Sets BattleCalculatorAI.suitTargetOverride for all battles on this AI, e.g. "                    "\"~suittarget 2\". A pinned index that is out of range or whose toon is dead falls back to the "                    "normal target pick. \"random\" clears the pin; with no argument the current setting is reported."
+    execLocation = MagicWordConfig.EXEC_LOC_SERVER
+    arguments = [("index", str, False, "")]
+
+    def handleWord(self, invoker, avId, toon, *args):
+        from toontown.battle.BattleCalculatorAI import BattleCalculatorAI
+
+        value = args[0]
+        if not value:
+            current = BattleCalculatorAI.suitTargetOverride
+            return "Suit target is \"%s\"." % ("random" if current is None else current)
+
+        if value.lower() == "random":
+            BattleCalculatorAI.suitTargetOverride = None
+            return "Suit target set to \"random\"."
+
+        try:
+            index = int(value)
+        except ValueError:
+            return "Bad suit target \"%s\"." % value
+        if index < 0:
+            return "Bad suit target \"%s\"." % value
+
+        BattleCalculatorAI.suitTargetOverride = index
+        return "Suit target set to %d." % index
+
 class SuitReserves(MagicWord):
     desc = "Make new suit building interiors start with several suits and reserves."
     advancedDesc = "\"~suitreserves on\" makes every suit interior planned afterwards use 4 suits per floor and "                    "all of them active in the first round (prc 4-suits-per-floor, n-suits-1st-round), so a floor "                    "sends reserves mid-battle. \"off\" restores the random plan."

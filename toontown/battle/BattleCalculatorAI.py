@@ -32,6 +32,7 @@ class BattleCalculatorAI:
     toonsAlways5050 = simbase.config.GetBool('toons-always-5050', 0)
     suitsAlwaysHit = simbase.config.GetBool('suits-always-hit', 0)
     suitsAlwaysMiss = simbase.config.GetBool('suits-always-miss', 0)
+    suitTargetOverride = None
     immortalSuits = simbase.config.GetBool('immortal-suits', 0)
     propAndOrganicBonusStack = simbase.config.GetBool('prop-and-organic-bonus-stack', 0)
 
@@ -1081,6 +1082,10 @@ class BattleCalculatorAI:
     def __calcSuitTarget(self, attackIndex):
         attack = self.battle.suitAttacks[attackIndex]
         suitId = attack[SUIT_ID_COL]
+        pinned = BattleCalculatorAI.suitTargetOverride
+        if pinned is not None and 0 <= pinned < len(self.battle.activeToons):
+            if not self.__combatantDead(self.battle.activeToons[pinned], toon=1):
+                return pinned
         if suitId in self.SuitAttackers and random.randint(0, 99) < 75:
             totalDamage = 0
             for currToon in list(self.SuitAttackers[suitId].keys()):
