@@ -1,3 +1,4 @@
+import hashlib
 import json
 import time
 import os
@@ -225,7 +226,10 @@ class LoginOperation(GameOperation):
         # lookup function's result & determines which operation should run next.
         if not result.get('success'):
             # The play token was rejected!
-            self.loginManager.air.writeServerEvent('play-token-rejected', self.sender, self.playToken)
+            # Log a fingerprint, not the token: a rejected token may still be a real credential (e.g. a JWT
+            # for another audience), and event logs outlive it.
+            self.loginManager.air.writeServerEvent('play-token-rejected', self.sender,
+                                                   hashlib.sha256(self.playToken.encode()).hexdigest()[:16])
             self._handleCloseConnection(result.get('reason', 'The accounts database rejected your play token.'))
             return
 
