@@ -39,6 +39,10 @@ class AccountDB:
     def storeAccountId(self, databaseId, accountId, callback):
         raise NotImplementedError('storeAccountId')  # Must be overridden by subclass.
 
+    def addLoginResponseFields(self, responseData, databaseId, accountId, created):
+        # Lets a subclass add fields to the login response. created is True when this login made the account.
+        pass
+
 
 class DeveloperAccountDB(AccountDB):
 
@@ -103,6 +107,74 @@ class DeveloperAccountDB(AccountDB):
             self.loginManager.notify.warning(f"Attempted to store user {databaseId} with account {accountId} even though it already exists!")
             callback(False)
 
+
+class JwtAccountDB(AccountDB):
+    """
+    Accepts an EdDSA-signed JWT as the play token. The account database lives elsewhere: the token carries the
+    user (sub), the access level (lvl) and, once the account exists, its doId (aid). Needs PyJWT and cryptography.
+
+    Config:
+      accountdb-jwt-public-key-file    PEM public key the tokens are signed with
+      accountdb-receipt-key-file       PEM private key that signs the first-login receipt (optional)
+    """
+
+    AUDIENCE = 'toontown-ud'
+    RECEIPT_AUDIENCE = 'svt-auth'
+    LEEWAY = 60
+    RECEIPT_LIFETIME = 600
+
+    def __init__(self, loginManager):
+        AccountDB.__init__(self, loginManager)
+        import jwt
+        self.jwt = jwt
+        with open(config.GetString('accountdb-jwt-public-key-file', ''), 'rb') as file:
+            self.publicKey = file.read()
+        self.receiptKey = None
+        receiptKeyFile = config.GetString('accountdb-receipt-key-file', '')
+        if receiptKeyFile:
+            with open(receiptKeyFile, 'rb') as file:
+                self.receiptKey = file.read()
+        else:
+            self.loginManager.notify.warning('accountdb-receipt-key-file is not set; first logins get no bind receipt')
+
+    def lookup(self, playToken, callback):
+        try:
+            claims = self.jwt.decode(playToken, self.publicKey, algorithms=['EdDSA'], audience=self.AUDIENCE,
+                                     leeway=self.LEEWAY, options={'require': ['exp', 'sub']})
+        except Exception as e:
+            self.loginManager.notify.info('Rejected play token: %s' % e.__class__.__name__)
+            callback({'success': False, 'reason': 'Invalid play token.'})
+            return
+
+        sub = claims['sub']
+        level = claims.get('lvl')
+        accountId = claims.get('aid') or 0
+        if (not isinstance(sub, str) or not sub or level not in OTPGlobals.AccessLevelName2Int
+                or not isinstance(accountId, int) or isinstance(accountId, bool) or accountId < 0):
+            self.loginManager.notify.info('Rejected play token: bad claims')
+            callback({'success': False, 'reason': 'Invalid play token.'})
+            return
+
+        callback({'success': True,
+                  'accountId': accountId,
+                  'databaseId': sub,
+                  'accessLevel': level})
+
+    def storeAccountId(self, databaseId, accountId, callback):
+        # The login server keeps the sub -> accountId link; it learns it from the receipt.
+        callback(True)
+
+    def addLoginResponseFields(self, responseData, databaseId, accountId, created):
+        if not created or not self.receiptKey:
+            return
+        now = int(time.time())
+        responseData['bindReceipt'] = self.jwt.encode(
+            {'iss': 'toontown-ud', 'aud': self.RECEIPT_AUDIENCE, 'sub': databaseId, 'aid': accountId,
+             'exp': now + self.RECEIPT_LIFETIME},
+            self.receiptKey, algorithm='EdDSA')
+        self.loginManager.air.writeServerEvent('bind-receipt-issued', accountId, databaseId)
+
+
 class GameOperation:
 
     def __init__(self, loginManager, sender):
@@ -141,6 +213,7 @@ class LoginOperation(GameOperation):
         self.databaseId = 0
         self.accountId = 0
         self.account = None
+        self.accountCreated = False
 
     def start(self, playToken):
         self.playToken = playToken
@@ -211,6 +284,7 @@ class LoginOperation(GameOperation):
 
         # We can now call the __storeAccountId function.
         self.accountId = accountId
+        self.accountCreated = True
         self.__storeAccountId()
 
     def __storeAccountId(self):
@@ -271,6 +345,8 @@ class LoginOperation(GameOperation):
             'toonAccountType': 'NO_PARENT_ACCOUNT',
             'userName': str(self.databaseId)
         }
+        self.loginManager.accountDb.addLoginResponseFields(responseData, self.databaseId, self.accountId,
+                                                           self.accountCreated)
         responseBlob = json.dumps(responseData)
         self.loginManager.sendUpdateToChannel(self.sender, 'loginResponse', [responseBlob])
         self._handleDone()
@@ -886,8 +962,11 @@ class AstronLoginManagerUD(DistributedObjectGlobalUD):
         self.nameGenerator = NameGenerator()
 
         # Instantiate the account database backend.
-        # TODO: In the future, add more database interfaces & make this configurable.
-        self.accountDb = DeveloperAccountDB(self)
+        accountDbType = config.GetString('accountdb-type', 'developer')
+        if accountDbType == 'jwt':
+            self.accountDb = JwtAccountDB(self)
+        else:
+            self.accountDb = DeveloperAccountDB(self)
 
     def closeConnection(self, connectionId, reason='', forOperations=False, isAccount=False):
         if forOperations:
